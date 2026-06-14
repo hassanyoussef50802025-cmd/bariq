@@ -16,6 +16,12 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -26,9 +32,14 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.33
 
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p $HOME/.buildozer
+          yes | buildozer android update || true
+
       - name: Build APK
         run: |
-          buildozer android debug
+          yes | buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
