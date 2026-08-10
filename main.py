@@ -29,6 +29,21 @@ FIREBASE_URL = "https://bariq-ce6b4-default-rtdb.firebaseio.com"
 FIREBASE_KEY = "AIzaSyDhEo61jzd-npwhhw-Vf1R8fLWttJbJib8"
 ADMIN_ID = "53710624"
 
+# ==================== معالجة النص العربي ====================
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    def ar(text):
+        try:
+            reshaped = arabic_reshaper.reshape(str(text))
+            return get_display(reshaped)
+        except:
+            return str(text)
+except ImportError:
+    def ar(text):
+        return str(text)
+
+# ==================== دعم الخط العربي ====================
 FONT_NAME = "Roboto"
 try:
     if platform == "android":
@@ -88,7 +103,7 @@ def format_time(ts):
     try: return time.strftime("%H:%M", time.localtime(ts))
     except: return ""
 def status_label(s): return " vvv" if s=="read" else (" vv" if s=="received" else " v")
-def status_text(s): return "مقروءة" if s=="read" else ("مستلمة" if s=="received" else "مرسلة")
+def status_text(s): return ar("مقروءة") if s=="read" else (ar("مستلمة") if s=="received" else ar("مرسلة"))
 def is_audio(fn): return os.path.splitext(fn)[1].lower() in AUDIO_EXTS
 def is_video(fn): return os.path.splitext(fn)[1].lower() in VIDEO_EXTS
 
@@ -178,27 +193,27 @@ class WelcomeScreen(Screen):
         with root.canvas.before:
             Color(*C_BG); self._bg=Rectangle(pos=root.pos,size=root.size)
         root.bind(pos=lambda i,v:setattr(self._bg,'pos',v),size=lambda i,v:setattr(self._bg,'size',v))
-        root.add_widget(Label(text='بارق',font_name=FONT_NAME,font_size=sp(42),bold=True,color=C_TEXT,size_hint_y=None,height=dp(80)))
-        root.add_widget(Label(text='تطبيق المراسلة الآمن',font_name=FONT_NAME,font_size=sp(18),color=C_TEXT,size_hint_y=None,height=dp(40)))
+        root.add_widget(Label(text=ar('بارق'),font_name=FONT_NAME,font_size=sp(42),bold=True,color=C_TEXT,size_hint_y=None,height=dp(80)))
+        root.add_widget(Label(text=ar('تطبيق المراسلة الآمن'),font_name=FONT_NAME,font_size=sp(18),color=C_TEXT,size_hint_y=None,height=dp(40)))
         root.add_widget(Widget())
-        b1=Button(text='إنشاء رقم جديد',font_name=FONT_NAME,font_size=sp(18),size_hint=(1,None),height=dp(55),background_color=C_BTN_SEND,background_normal='')
+        b1=Button(text=ar('إنشاء رقم جديد'),font_name=FONT_NAME,font_size=sp(18),size_hint=(1,None),height=dp(55),background_color=C_BTN_SEND,background_normal='')
         b1.bind(on_press=self.create_account); root.add_widget(b1)
-        root.add_widget(Label(text='أو أدخل رقمك:',font_name=FONT_NAME,font_size=sp(16),color=C_TEXT,size_hint_y=None,height=dp(35)))
-        self.entry=TextInput(hint_text='8 أرقام',font_name=FONT_NAME,font_size=sp(18),size_hint=(1,None),height=dp(50),halign='center',multiline=False,input_filter='int')
+        root.add_widget(Label(text=ar('أو أدخل رقمك:'),font_name=FONT_NAME,font_size=sp(16),color=C_TEXT,size_hint_y=None,height=dp(35)))
+        self.entry=TextInput(hint_text=ar('8 أرقام'),font_name=FONT_NAME,font_size=sp(18),size_hint=(1,None),height=dp(50),halign='center',multiline=False,input_filter='int')
         root.add_widget(self.entry)
-        b2=Button(text='تسجيل الدخول',font_name=FONT_NAME,font_size=sp(18),size_hint=(1,None),height=dp(55),background_color=C_BTN_EMOJI,background_normal='')
+        b2=Button(text=ar('تسجيل الدخول'),font_name=FONT_NAME,font_size=sp(18),size_hint=(1,None),height=dp(55),background_color=C_BTN_EMOJI,background_normal='')
         b2.bind(on_press=self.login); root.add_widget(b2)
         root.add_widget(Widget()); self.add_widget(root)
 
     def create_account(self,*a):
         nid=generate_id(); d=load_data(); d['my_id']=nid; save_data(d)
         c=BoxLayout(orientation='vertical',padding=dp(20),spacing=dp(10))
-        c.add_widget(Label(text='رقمك الجديد:',font_name=FONT_NAME,font_size=sp(16),color=C_TEXT))
+        c.add_widget(Label(text=ar('رقمك الجديد:'),font_name=FONT_NAME,font_size=sp(16),color=C_TEXT))
         c.add_widget(Label(text=nid,font_name=FONT_NAME,font_size=sp(36),bold=True,color=C_TEXT))
-        pop=Popup(title='تم إنشاء حسابك',content=c,size_hint=(0.85,0.45))
-        bc=Button(text='نسخ',font_name=FONT_NAME,size_hint=(1,None),height=dp(45),background_color=C_BTN_SEND,background_normal='')
+        pop=Popup(title=ar('تم إنشاء حسابك'),content=c,size_hint=(0.85,0.45))
+        bc=Button(text=ar('نسخ'),font_name=FONT_NAME,size_hint=(1,None),height=dp(45),background_color=C_BTN_SEND,background_normal='')
         bc.bind(on_press=lambda x:Clipboard.copy(nid)); c.add_widget(bc)
-        bo=Button(text='انطلق!',font_name=FONT_NAME,size_hint=(1,None),height=dp(45),background_color=C_BTN_EMOJI,background_normal='')
+        bo=Button(text=ar('انطلق!'),font_name=FONT_NAME,size_hint=(1,None),height=dp(45),background_color=C_BTN_EMOJI,background_normal='')
         def go(x): pop.dismiss(); App.get_running_app().data=load_data(); self.manager.transition=SlideTransition(direction='left'); self.manager.current='home'
         bo.bind(on_press=go); c.add_widget(bo); pop.open()
 
@@ -207,7 +222,7 @@ class WelcomeScreen(Screen):
         if len(e)==8 and e.isdigit():
             d=load_data(); d['my_id']=e; save_data(d); App.get_running_app().data=d
             self.manager.transition=SlideTransition(direction='left'); self.manager.current='home'
-        else: Popup(title='خطأ',content=Label(text='8 أرقام مطلوبة',font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.3)).open()
+        else: Popup(title=ar('خطأ'),content=Label(text=ar('8 أرقام مطلوبة'),font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.3)).open()
 
 class HomeScreen(Screen):
     def __init__(self,**kw):
@@ -236,20 +251,20 @@ class HomeScreen(Screen):
         root.bind(pos=lambda i,v:setattr(self._bg,'pos',v),size=lambda i,v:setattr(self._bg,'size',v))
         hdr=BoxLayout(size_hint_y=None,height=dp(58),padding=[dp(12),dp(8)])
         with hdr.canvas.before: Color(*C_HEADER_BG[:3],1); Rectangle(pos=hdr.pos,size=hdr.size)
-        hdr.add_widget(Label(text='بارق | رقمك: '+self.data.get('my_id',''),font_name=FONT_NAME,font_size=sp(16),bold=True,color=C_TEXT,halign='right'))
+        hdr.add_widget(Label(text=ar('بارق | رقمك: ')+self.data.get('my_id',''),font_name=FONT_NAME,font_size=sp(16),bold=True,color=C_TEXT,halign='right'))
         root.add_widget(hdr)
         ab=BoxLayout(size_hint_y=None,height=dp(52),padding=[dp(8),dp(4)],spacing=dp(6))
-        self.entry_c=TextInput(hint_text='أضف رقم جهة اتصال',font_name=FONT_NAME,font_size=sp(15),multiline=False,input_filter='int',halign='right',size_hint_x=0.72)
-        ba=Button(text='إضافة',font_name=FONT_NAME,font_size=sp(15),size_hint_x=0.28,background_color=C_BTN_SEND,background_normal='')
+        self.entry_c=TextInput(hint_text=ar('أضف رقم جهة اتصال'),font_name=FONT_NAME,font_size=sp(15),multiline=False,input_filter='int',halign='right',size_hint_x=0.72)
+        ba=Button(text=ar('إضافة'),font_name=FONT_NAME,font_size=sp(15),size_hint_x=0.28,background_color=C_BTN_SEND,background_normal='')
         ba.bind(on_press=self.add_contact); ab.add_widget(self.entry_c); ab.add_widget(ba); root.add_widget(ab)
         sv=ScrollView(size_hint=(1,1))
         self.cl=GridLayout(cols=1,size_hint_y=None,spacing=dp(3),padding=[dp(6),dp(4)])
         self.cl.bind(minimum_height=self.cl.setter('height')); self._populate(); sv.add_widget(self.cl); root.add_widget(sv)
         if self.data.get('my_id')==ADMIN_ID:
             adm=BoxLayout(size_hint_y=None,height=dp(44),padding=[dp(8),dp(4)],spacing=dp(5))
-            bi=Button(text='معلومات الخادم',font_name=FONT_NAME,font_size=sp(13),background_color=C_BTN_EMOJI,background_normal='')
+            bi=Button(text=ar('معلومات الخادم'),font_name=FONT_NAME,font_size=sp(13),background_color=C_BTN_EMOJI,background_normal='')
             bi.bind(on_press=self.server_info)
-            bc=Button(text='تنظيف الخادم',font_name=FONT_NAME,font_size=sp(13),background_color=C_BTN_CANCEL,background_normal='')
+            bc=Button(text=ar('تنظيف الخادم'),font_name=FONT_NAME,font_size=sp(13),background_color=C_BTN_CANCEL,background_normal='')
             bc.bind(on_press=self.clean_server); adm.add_widget(bi); adm.add_widget(bc); root.add_widget(adm)
         self.add_widget(root)
 
@@ -257,17 +272,17 @@ class HomeScreen(Screen):
         self.cl.clear_widgets(); contacts=self.data.get('contacts',{})
         all_ids=list(contacts.items())
         for sid,msgs in self.pending_msgs.items():
-            if sid not in contacts and msgs: all_ids.append((sid,'مجهول: '+sid))
+            if sid not in contacts and msgs: all_ids.append((sid,ar('مجهول: ')+sid))
         if not all_ids:
-            self.cl.add_widget(Label(text='لا توجد جهات اتصال\nأضف رقماً للبدء',font_name=FONT_NAME,font_size=sp(16),color=C_TEXT,size_hint_y=None,height=dp(80),halign='center')); return
+            self.cl.add_widget(Label(text=ar('لا توجد جهات اتصال\nأضف رقماً للبدء'),font_name=FONT_NAME,font_size=sp(16),color=C_TEXT,size_hint_y=None,height=dp(80),halign='center')); return
         for cid,cname in all_ids:
-            p=len(self.pending_msgs.get(cid,[])); lbl=cname+' - '+cid+('  🔔 '+str(p) if p>0 else '')
+            p=len(self.pending_msgs.get(cid,[])); lbl=ar(cname)+' - '+cid+('  🔔 '+str(p) if p>0 else '')
             row=BoxLayout(size_hint_y=None,height=dp(52),padding=[dp(5),dp(3)],spacing=dp(5))
             with row.canvas.before:
                 Color(*C_WHITE); rr=RoundedRectangle(pos=row.pos,size=row.size,radius=[dp(10)])
             row.bind(pos=lambda i,v,r=rr:setattr(r,'pos',v),size=lambda i,v,r=rr:setattr(r,'size',v))
             row.add_widget(Label(text=lbl,font_name=FONT_NAME,font_size=sp(14),color=C_TEXT,halign='right',size_hint_x=0.72))
-            bo=Button(text='فتح',font_name=FONT_NAME,font_size=sp(13),size_hint_x=0.18,background_color=C_BTN_SEND,background_normal='')
+            bo=Button(text=ar('فتح'),font_name=FONT_NAME,font_size=sp(13),size_hint_x=0.18,background_color=C_BTN_SEND,background_normal='')
             bo.bind(on_press=lambda x,ci=cid,cn=cname:self.open_chat(ci,cn))
             bd=Button(text='X',font_name=FONT_NAME,font_size=sp(13),size_hint_x=0.1,background_color=C_BTN_CANCEL,background_normal='')
             bd.bind(on_press=lambda x,ci=cid:self.delete_contact(ci))
@@ -276,9 +291,9 @@ class HomeScreen(Screen):
     def add_contact(self,*a):
         cid=self.entry_c.text.strip()
         if len(cid)==8 and cid.isdigit():
-            if cid==self.data['my_id']: Popup(title='تنبيه',content=Label(text='لا يمكنك إضافة رقمك',font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.28)).open(); return
+            if cid==self.data['my_id']: Popup(title=ar('تنبيه'),content=Label(text=ar('لا يمكنك إضافة رقمك'),font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.28)).open(); return
             self.data['contacts'][cid]=cid; save_data(self.data); self.entry_c.text=''; self._populate()
-        else: Popup(title='خطأ',content=Label(text='الرقم يجب أن يكون 8 أرقام',font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.28)).open()
+        else: Popup(title=ar('خطأ'),content=Label(text=ar('الرقم يجب أن يكون 8 أرقام'),font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.28)).open()
 
     def delete_contact(self,cid):
         if cid in self.data.get('contacts',{}): del self.data['contacts'][cid]; save_data(self.data); self._populate()
@@ -325,8 +340,8 @@ class HomeScreen(Screen):
                 self.pending_msgs.setdefault(sid,[])
                 for key,msg in msgs:
                     if not any(k==key for k,_ in self.pending_msgs[sid]): self.pending_msgs[sid].append((key,msg))
-                self._save_pending(); sn=contacts.get(sid,'رقم '+sid); cnt=len(self.pending_msgs[sid])
-                p=Popup(title='رسالة جديدة',content=Label(text='وصلتك '+str(cnt)+' رسالة من '+sn,font_name=FONT_NAME,color=C_TEXT,font_size=sp(15)),size_hint=(0.82,0.22),auto_dismiss=True)
+                self._save_pending(); sn=contacts.get(sid,ar('رقم ')+sid); cnt=len(self.pending_msgs[sid])
+                p=Popup(title=ar('رسالة جديدة'),content=Label(text=ar('وصلتك ')+str(cnt)+ar(' رسالة من ')+ar(sn),font_name=FONT_NAME,color=C_TEXT,font_size=sp(15)),size_hint=(0.82,0.22),auto_dismiss=True)
                 p.open(); Clock.schedule_once(lambda dt:p.dismiss(),3); changed=True
         if changed: self._populate()
 
@@ -336,16 +351,16 @@ class HomeScreen(Screen):
                 r=requests.get(FIREBASE_URL+"/messages.json?auth="+FIREBASE_KEY,timeout=15)
                 if r.status_code==200 and r.text!='null':
                     d=r.json(); total=sum(len(v) for v in d.values() if isinstance(v,dict))
-                    mb=len(r.content)/1024/1024; msg='الرسائل: '+str(total)+'\nالحجم: '+'%.2f'%mb+' MB'
-                else: msg='الخادم فارغ'
-            except: msg='تعذر الاتصال'
-            Clock.schedule_once(lambda dt:Popup(title='معلومات الخادم',content=Label(text=msg,font_name=FONT_NAME,color=C_TEXT,font_size=sp(14)),size_hint=(0.85,0.4)).open(),0)
+                    mb=len(r.content)/1024/1024; msg=ar('الرسائل: ')+str(total)+'\n'+ar('الحجم: ')+'%.2f'%mb+' MB'
+                else: msg=ar('الخادم فارغ')
+            except: msg=ar('تعذر الاتصال')
+            Clock.schedule_once(lambda dt:Popup(title=ar('معلومات الخادم'),content=Label(text=msg,font_name=FONT_NAME,color=C_TEXT,font_size=sp(14)),size_hint=(0.85,0.4)).open(),0)
         threading.Thread(target=gi,daemon=True).start()
 
     def clean_server(self,*a):
         def dc():
-            ok=fb_clear(); msg='تم تنظيف الخادم' if ok else 'حدث خطأ'
-            Clock.schedule_once(lambda dt:Popup(title='تنظيف',content=Label(text=msg,font_name=FONT_NAME,color=C_TEXT),size_hint=(0.75,0.25)).open(),0)
+            ok=fb_clear(); msg=ar('تم تنظيف الخادم') if ok else ar('حدث خطأ')
+            Clock.schedule_once(lambda dt:Popup(title=ar('تنظيف'),content=Label(text=msg,font_name=FONT_NAME,color=C_TEXT),size_hint=(0.75,0.25)).open(),0)
         threading.Thread(target=dc,daemon=True).start()
 
 class ChatScreen(Screen):
@@ -375,7 +390,7 @@ class ChatScreen(Screen):
         hdr.bind(pos=lambda i,v:setattr(self._hbg,'pos',(v[0]+2,v[1]+2)),size=lambda i,v:setattr(self._hbg,'size',(v[0]-4,v[1]-4)))
         bb=Button(text='◀',font_name=FONT_NAME,font_size=sp(20),size_hint=(None,1),width=dp(44),background_color=C_BTN_EMOJI,background_normal='')
         bb.bind(on_press=self.go_back); hdr.add_widget(bb)
-        hdr.add_widget(Label(text='المحادثة مع: '+self.contact_name,font_name=FONT_NAME,font_size=sp(16),bold=True,color=C_TEXT,halign='right'))
+        hdr.add_widget(Label(text=ar('المحادثة مع: ')+ar(self.contact_name),font_name=FONT_NAME,font_size=sp(16),bold=True,color=C_TEXT,halign='right'))
         root.add_widget(hdr)
         self.chat_scroll=ScrollView(size_hint=(1,1),do_scroll_x=False)
         with self.chat_scroll.canvas.before: Color(*C_CHAT_BG[:3],1); self._cbg=Rectangle(pos=self.chat_scroll.pos,size=self.chat_scroll.size)
@@ -386,7 +401,7 @@ class ChatScreen(Screen):
         root.add_widget(self.reply_lbl)
         ib=BoxLayout(size_hint_y=None,height=dp(52),padding=[dp(8),dp(5)],spacing=dp(5))
         with ib.canvas.before: Color(*C_WHITE[:3],1); Rectangle(pos=ib.pos,size=ib.size)
-        self.entry=TextInput(hint_text='اكتب رسالتك...',font_name=FONT_NAME,font_size=sp(16),multiline=False,halign='right',size_hint_x=1)
+        self.entry=TextInput(hint_text=ar('اكتب رسالتك...'),font_name=FONT_NAME,font_size=sp(16),multiline=False,halign='right',size_hint_x=1)
         self.entry.bind(on_text_validate=self.send_message); ib.add_widget(self.entry); root.add_widget(ib)
         bar=BoxLayout(size_hint_y=None,height=dp(58),padding=[dp(10),dp(6)],spacing=dp(10))
         with bar.canvas.before: Color(*C_BAR_BG[:3],1); self._bbg=Rectangle(pos=bar.pos,size=bar.size)
@@ -401,12 +416,12 @@ class ChatScreen(Screen):
         Clock.schedule_once(self._scroll_bottom,0.1)
 
     def _add_bubble(self,msg,idx):
-        is_mine=msg.get('from')==self.my_id; sender='أنت' if is_mine else self.contact_name
+        is_mine=msg.get('from')==self.my_id; sender=ar('أنت') if is_mine else ar(self.contact_name)
         t=format_time(msg.get('time',0))
         is_file=msg.get('type')=='file'; fname=msg.get('filename','')
         playable=is_file and (is_audio(fname) or is_video(fname))
-        body=('ملف: '+fname) if is_file else msg.get('text','')
-        rp=('رد: '+str(msg['reply_to'])[:20]+'\n') if msg.get('reply_to') else ''
+        body=(ar('ملف: ')+fname) if is_file else ar(msg.get('text',''))
+        rp=(ar('رد: ')+ar(str(msg['reply_to']))[:20]+'\n') if msg.get('reply_to') else ''
         tail=('\n'+t) if t else ''
         if is_mine: tail+='  '+status_label(msg.get('delivery_status','sent'))+' '+status_text(msg.get('delivery_status','sent'))
         full=rp+sender+': '+body+tail
@@ -423,11 +438,11 @@ class ChatScreen(Screen):
         bubble.bind(pos=upd,size=upd); lbl.bind(texture_size=lambda i,v:upd(bubble,v))
         bubble.add_widget(lbl)
         if playable:
-            play_btn=Button(text=('🎬 تشغيل الفيديو' if is_video(fname) else '🎵 تشغيل الصوت'),
+            play_btn=Button(text=ar('🎬 تشغيل الفيديو') if is_video(fname) else ar('🎵 تشغيل الصوت'),
                             font_name=FONT_NAME,font_size=sp(13),size_hint=(1,None),height=dp(34),
                             background_color=C_BTN_EMOJI,background_normal='')
             def play(x):
-                Popup(title='قريباً',content=Label(text='ميزة تشغيل الملفات قادمة قريباً',font_name=FONT_NAME,color=C_TEXT,font_size=sp(14)),size_hint=(0.85,0.3)).open()
+                Popup(title=ar('قريباً'),content=Label(text=ar('ميزة تشغيل الملفات قادمة قريباً'),font_name=FONT_NAME,color=C_TEXT,font_size=sp(14)),size_hint=(0.85,0.3)).open()
             play_btn.bind(on_press=play); bubble.add_widget(play_btn)
         outer.add_widget(bubble)
         if not is_mine: outer.add_widget(Widget(size_hint_x=0.15))
@@ -453,17 +468,17 @@ class ChatScreen(Screen):
     def _show_ctx(self,idx):
         if idx<0 or idx>=len(self.messages): return
         msg=self.messages[idx]; content=GridLayout(cols=1,spacing=dp(5),padding=dp(10),size_hint_y=None)
-        content.bind(minimum_height=content.setter('height')); pop=Popup(title='خيارات الرسالة',content=content,size_hint=(0.85,0.55))
-        opts=[('الرد',lambda x:self._do_reply(idx,pop)),('حذف',lambda x:self._do_delete(idx,pop)),('نسخ',lambda x:self._do_copy(idx,pop)),('توجيه',lambda x:self._do_forward(idx,pop))]
-        if msg.get('from')==self.my_id: opts.append(('تعديل',lambda x:self._do_edit(idx,pop)))
+        content.bind(minimum_height=content.setter('height')); pop=Popup(title=ar('خيارات الرسالة'),content=content,size_hint=(0.85,0.55))
+        opts=[(ar('الرد'),lambda x:self._do_reply(idx,pop)),(ar('حذف'),lambda x:self._do_delete(idx,pop)),(ar('نسخ'),lambda x:self._do_copy(idx,pop)),(ar('توجيه'),lambda x:self._do_forward(idx,pop))]
+        if msg.get('from')==self.my_id: opts.append((ar('تعديل'),lambda x:self._do_edit(idx,pop)))
         for lbl,h in opts:
             b=Button(text=lbl,font_name=FONT_NAME,font_size=sp(15),size_hint_y=None,height=dp(44),background_color=C_BTN_EMOJI,background_normal=''); b.bind(on_press=h); content.add_widget(b)
-        bc=Button(text='إغلاق',font_name=FONT_NAME,font_size=sp(15),size_hint_y=None,height=dp(44),background_color=C_BTN_CANCEL,background_normal=''); bc.bind(on_press=pop.dismiss); content.add_widget(bc); pop.open()
+        bc=Button(text=ar('إغلاق'),font_name=FONT_NAME,font_size=sp(15),size_hint_y=None,height=dp(44),background_color=C_BTN_CANCEL,background_normal=''); bc.bind(on_press=pop.dismiss); content.add_widget(bc); pop.open()
 
     def _do_reply(self,idx,pop):
         pop.dismiss(); msg=self.messages[idx]
-        self.reply_to='ملف: '+msg.get('filename','') if msg.get('type')=='file' else msg.get('text','')
-        self.reply_lbl.text='رد على: '+str(self.reply_to)[:40]; self.reply_lbl.height=dp(28)
+        self.reply_to=ar('ملف: ')+msg.get('filename','') if msg.get('type')=='file' else msg.get('text','')
+        self.reply_lbl.text=ar('رد على: ')+str(self.reply_to)[:40]; self.reply_lbl.height=dp(28)
 
     def _do_delete(self,idx,pop):
         pop.dismiss()
@@ -480,10 +495,10 @@ class ChatScreen(Screen):
         msg=self.messages[idx]; contacts=load_data().get('contacts',{})
         if not contacts: return
         content=GridLayout(cols=1,spacing=dp(5),padding=dp(10),size_hint_y=None); content.bind(minimum_height=content.setter('height'))
-        fp=Popup(title='توجيه إلى:',content=ScrollView(size_hint=(1,1)),size_hint=(0.85,0.6)); fp.content.add_widget(content)
+        fp=Popup(title=ar('توجيه إلى:'),content=ScrollView(size_hint=(1,1)),size_hint=(0.85,0.6)); fp.content.add_widget(content)
         for cid,cname in contacts.items():
-            b=Button(text=cname+' - '+cid,font_name=FONT_NAME,font_size=sp(14),size_hint_y=None,height=dp(44),background_color=C_BTN_SEND,background_normal='')
-            def fwd(x,ti=cid): fp.dismiss(); threading.Thread(target=fb_send,args=(ti,{'from':self.my_id,'text':'محولة: '+msg.get('text',msg.get('filename','')),'type':'text','time':int(time.time())}),daemon=True).start()
+            b=Button(text=ar(cname)+' - '+cid,font_name=FONT_NAME,font_size=sp(14),size_hint_y=None,height=dp(44),background_color=C_BTN_SEND,background_normal='')
+            def fwd(x,ti=cid): fp.dismiss(); threading.Thread(target=fb_send,args=(ti,{'from':self.my_id,'text':ar('محولة: ')+msg.get('text',msg.get('filename','')),'type':'text','time':int(time.time())}),daemon=True).start()
             b.bind(on_press=fwd); content.add_widget(b)
         fp.open()
 
@@ -492,12 +507,12 @@ class ChatScreen(Screen):
         if idx>=len(self.messages): return
         msg=self.messages[idx]; content=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8))
         entry=TextInput(text=msg.get('text',''),font_name=FONT_NAME,font_size=sp(15),halign='right',multiline=True,size_hint_y=None,height=dp(90)); content.add_widget(entry)
-        ep=Popup(title='تعديل',content=content,size_hint=(0.9,0.42))
+        ep=Popup(title=ar('تعديل'),content=content,size_hint=(0.9,0.42))
         def save_e(x):
             nt=entry.text.strip()
-            if nt: self.messages[idx]['text']=nt+' (معدل)'; save_chat(self.my_id,self.contact_id,self.messages); self._rebuild()
+            if nt: self.messages[idx]['text']=nt+ar(' (معدل)'); save_chat(self.my_id,self.contact_id,self.messages); self._rebuild()
             ep.dismiss()
-        bk=Button(text='حفظ',font_name=FONT_NAME,size_hint_y=None,height=dp(44),background_color=C_BTN_SEND,background_normal=''); bk.bind(on_press=save_e); content.add_widget(bk); ep.open()
+        bk=Button(text=ar('حفظ'),font_name=FONT_NAME,size_hint_y=None,height=dp(44),background_color=C_BTN_SEND,background_normal=''); bk.bind(on_press=save_e); content.add_widget(bk); ep.open()
 
     def cancel_reply(self,*a): self.reply_to=None; self.reply_lbl.text=''; self.reply_lbl.height=0
 
@@ -520,12 +535,12 @@ class ChatScreen(Screen):
 
     def send_file(self,*a):
         try: from plyer import filechooser; filechooser.open_file(on_selection=self._on_file)
-        except: Popup(title='تنبيه',content=Label(text='ارسال الملفات يتطلب أندرويد',font_name=FONT_NAME,color=C_TEXT,font_size=sp(14)),size_hint=(0.85,0.3)).open()
+        except: Popup(title=ar('تنبيه'),content=Label(text=ar('ارسال الملفات يتطلب أندرويد'),font_name=FONT_NAME,color=C_TEXT,font_size=sp(14)),size_hint=(0.85,0.3)).open()
 
     def _on_file(self,sel):
         if not sel: return
         fp=sel[0]; fn=os.path.basename(fp)
-        if os.path.getsize(fp)>5*1024*1024: Popup(title='خطأ',content=Label(text='الملف كبير جداً',font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.28)).open(); return
+        if os.path.getsize(fp)>5*1024*1024: Popup(title=ar('خطأ'),content=Label(text=ar('الملف كبير جداً'),font_name=FONT_NAME,color=C_TEXT),size_hint=(0.8,0.28)).open(); return
         with open(fp,'rb') as f: fd=base64.b64encode(f.read()).decode()
         now=int(time.time()); pay={'from':self.my_id,'type':'file','filename':fn,'data':fd,'time':now,'delivery_status':'sent'}
         lm={'from':self.my_id,'type':'file','filename':fn,'time':now,'delivery_status':'sent','key':''}
@@ -542,7 +557,7 @@ class ChatScreen(Screen):
     def open_emoji(self,*a):
         EMOJIS=[('😀',''),('😂',''),('😍',''),('😢',''),('😮',''),('😎',''),('❤️',''),('👍',''),('👎',''),('🙏',''),('🎉',''),('🔥',''),('✅',''),('❌',''),('⭐',''),('😊',''),('😴',''),('🤔',''),('🌹',''),('💪','')]
         content=GridLayout(cols=5,spacing=dp(4),padding=dp(8),size_hint_y=None); content.bind(minimum_height=content.setter('height'))
-        sv=ScrollView(size_hint=(1,1)); sv.add_widget(content); pop=Popup(title='اختر رمزاً',content=sv,size_hint=(0.88,0.6))
+        sv=ScrollView(size_hint=(1,1)); sv.add_widget(content); pop=Popup(title=ar('اختر رمزاً'),content=sv,size_hint=(0.88,0.6))
         for em,_ in EMOJIS:
             b=Button(text=em,font_size=sp(26),size_hint_y=None,height=dp(52),background_color=C_WHITE,background_normal='',color=C_TEXT)
             def ins(x,e=em): self.entry.text+=e; pop.dismiss()
@@ -559,7 +574,7 @@ class ChatScreen(Screen):
         mtype=msg.get('type','text'); sid=msg.get('from','')
         threading.Thread(target=notify_status,args=(sid,key,'received',self.my_id),daemon=True).start()
         if mtype=='file':
-            fn=msg.get('filename','ملف')
+            fn=msg.get('filename',ar('ملف'))
             try:
                 with open(os.path.join(FILES_DIR,fn),'wb') as f: f.write(base64.b64decode(msg.get('data','')))
             except: pass
