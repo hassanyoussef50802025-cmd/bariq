@@ -43,22 +43,15 @@ except ImportError:
     def ar(text):
         return str(text)
 
-# ==================== دعم الخط العربي ====================
+# ==================== تسجيل الخط العربي ====================
 FONT_NAME = "Roboto"
 try:
-    if platform == "android":
-        _candidates = [
-            "/system/fonts/NotoNaskhArabic-Regular.ttf",
-            "/system/fonts/NotoSansArabic-Regular.ttf",
-            "/system/fonts/NotoSansArabicUI-Regular.ttf",
-            "/system/fonts/DroidSansFallback.ttf",
-            "/system/fonts/DroidNaskh-Regular.ttf",
-        ]
-        for _c in _candidates:
-            if os.path.exists(_c):
-                LabelBase.register(name="Arabic", fn_regular=_c)
-                FONT_NAME = "Arabic"
-                break
+    _font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Amiri-Regular.ttf")
+    if not os.path.exists(_font_path):
+        _font_path = "/data/data/org.bariq/files/app/Amiri-Regular.ttf"
+    if os.path.exists(_font_path):
+        LabelBase.register(name="Amiri", fn_regular=_font_path)
+        FONT_NAME = "Amiri"
 except Exception:
     pass
 
@@ -574,7 +567,7 @@ class ChatScreen(Screen):
         mtype=msg.get('type','text'); sid=msg.get('from','')
         threading.Thread(target=notify_status,args=(sid,key,'received',self.my_id),daemon=True).start()
         if mtype=='file':
-            fn=msg.get('filename',ar('ملف'))
+            fn=msg.get('filename','ملف')
             try:
                 with open(os.path.join(FILES_DIR,fn),'wb') as f: f.write(base64.b64decode(msg.get('data','')))
             except: pass
