@@ -26,12 +26,9 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install React Native CLI
-        run: npm install -g react-native-cli
-
       - name: Create React Native project
         run: |
-          npx react-native init BariqApp --version 0.73.0 --skip-install
+          npx @react-native-community/cli@12 init BariqApp --version 0.73.0 --skip-install --npm
           cp App.js BariqApp/App.js
 
       - name: Install dependencies
@@ -43,6 +40,7 @@ jobs:
       - name: Build APK
         run: |
           cd BariqApp/android
+          chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
