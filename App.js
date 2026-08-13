@@ -3,11 +3,11 @@ import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, Alert, ScrollView, KeyboardAvoidingView,
   Platform, I18nManager, ActivityIndicator, SafeAreaView,
-  Image, Linking, PermissionsAndroid, AppState,
+  Image, Linking, AppState, NativeModules,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
+import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 
 I18nManager.forceRTL(true);
 
@@ -33,7 +33,7 @@ const C = {
   linkColor: '#1565C0',
 };
 
-const EMOJIS = ['😀','😂','😍','😢','😮','😎','❤️','👍','👎','🙏','🎉','🔥','✅','❌','⭐','😊','😴','🤔','🌹','💪','😅','🤣','😇','🥰','😘','😜','🤩','😭','😱','🤯','💯','🎊','🎈','🌟','💫','⚡','🌈','🎯','💪','🙌'];
+const EMOJIS = ['😀','😂','😍','😢','😮','😎','❤️','👍','👎','🙏','🎉','🔥','✅','❌','⭐','😊','😴','🤔','🌹','💪','😅','🤣','😇','🥰','😘','😜','🤩','😭','😱','🤯','💯','🎊','🎈','🌟','💫','⚡','🌈','🎯','🙌'];
 
 const generateId = () => {
   let id = '';
@@ -53,6 +53,13 @@ const statusColor = (s) => s === 'read' ? '#4FC3F7' : '#999';
 const isImageFile = (name) => /\.(jpg|jpeg|png|gif|webp)$/i.test(name || '');
 const isAudioFile = (name) => /\.(mp3|wav|m4a|aac|ogg)$/i.test(name || '');
 const isVideoFile = (name) => /\.(mp4|mkv|avi|mov|webm|3gp)$/i.test(name || '');
+
+const getMimeType = (filename) => {
+  if (!filename) return 'image/jpeg';
+  const ext = filename.split('.').pop().toLowerCase();
+  const types = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+  return types[ext] || 'image/jpeg';
+};
 
 const extractUrls = (text) => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -101,7 +108,11 @@ const getMsgStatus = async (uid, key) => {
   } catch { return ''; }
 };
 
+// ==================== إعداد الإشعارات ====================
+let notificationChannelCreated = false;
+
 const setupNotifications = async () => {
+  if (notificationChannelCreated) return;
   try {
     await notifee.requestPermission();
     await notifee.createChannel({
@@ -109,23 +120,27 @@ const setupNotifications = async () => {
       name: 'رسائل بارق',
       importance: AndroidImportance.HIGH,
       sound: 'default',
+      vibration: true,
     });
-  } catch {}
+    notificationChannelCreated = true;
+  } catch(e) { console.log('notification setup error:', e); }
 };
 
-const showNotification = async (title, body) => {
+const showNotification = async (title, body, myId) => {
   try {
     await notifee.displayNotification({
-      title,
+      title: `<b>${title}</b>`,
       body,
       android: {
         channelId: 'bariq_messages',
         importance: AndroidImportance.HIGH,
         sound: 'default',
+        vibrationPattern: [300, 500],
         smallIcon: 'ic_launcher',
+        pressAction: { id: 'default' },
       },
     });
-  } catch {}
+  } catch(e) { console.log('show notification error:', e); }
 };
 
 // ==================== شاشة الترحيب ====================
@@ -191,6 +206,7 @@ const HomeScreen = ({ myId, onOpenChat }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const listenerRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
+  const seenKeysRef = useRef(new Set());
 
   useEffect(() => {
     setupNotifications();
@@ -214,8 +230,13 @@ const HomeScreen = ({ myId, onOpenChat }) => {
     setPending(p ? JSON.parse(p) : {});
   };
 
-  const startListener = () => {
-    const seen = new Set();
+  const startListener = async () => {
+    // تحميل المفاتيح المرئية سابقاً
+    const savedSeen = await AsyncStorage.getItem('seen_keys');
+    if (savedSeen) {
+      JSON.parse(savedSeen).forEach(k => seenKeysRef.current.add(k));
+    }
+
     listenerRef.current = setInterval(async () => {
       try {
         const incoming = await fbGet(myId);
@@ -226,26 +247,29 @@ const HomeScreen = ({ myId, onOpenChat }) => {
         const names = savedNames ? JSON.parse(savedNames) : {};
 
         for (const [key, msg] of Object.entries(incoming)) {
-          if (!seen.has(key) && msg && typeof msg === 'object') {
-            seen.add(key);
+          if (!seenKeysRef.current.has(key) && msg && typeof msg === 'object') {
+            seenKeysRef.current.add(key);
             const sid = msg.from || '';
             if (!allP[sid]) allP[sid] = [];
             allP[sid].push({key, msg});
             changed = true;
 
-            if (appStateRef.current !== 'active') {
-              const senderName = names[sid] || `رقم ${sid}`;
-              const body = msg.type === 'file' ? `📎 ملف: ${msg.filename}` : (msg.text || '');
-              await showNotification(`رسالة من ${senderName}`, body);
-            }
+            // إرسال الإشعار دائماً (سواء كان التطبيق في الخلفية أو مفتوحاً)
+            const senderName = names[sid] || `رقم ${sid}`;
+            const body = msg.type === 'file'
+              ? `📎 ${msg.filename || 'ملف'}`
+              : (msg.text || '');
+            await showNotification(`رسالة من ${senderName}`, body, myId);
           }
         }
 
         if (changed) {
           await AsyncStorage.setItem('pending', JSON.stringify(allP));
+          // حفظ المفاتيح المرئية
+          await AsyncStorage.setItem('seen_keys', JSON.stringify([...seenKeysRef.current].slice(-500)));
           setPending({...allP});
         }
-      } catch {}
+      } catch(e) { console.log('listener error:', e); }
     }, 15000);
   };
 
@@ -268,7 +292,7 @@ const HomeScreen = ({ myId, onOpenChat }) => {
   };
 
   const deleteContact = async (cid) => {
-    Alert.alert('حذف', `هل تريد حذف جهة الاتصال؟`, [
+    Alert.alert('حذف', 'هل تريد حذف جهة الاتصال؟', [
       {text: 'إلغاء', style: 'cancel'},
       {text: 'حذف', style: 'destructive', onPress: async () => {
         const updatedC = {...contacts};
@@ -381,6 +405,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   const seenKeys = useRef(new Set());
   const listenerRef = useRef(null);
   const msgsRef = useRef([]);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     loadMessages();
@@ -390,7 +415,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   useEffect(() => {
     msgsRef.current = messages;
     if (messages.length > 0) {
-      setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 100);
+      setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 150);
     }
   }, [messages]);
 
@@ -429,6 +454,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
       type: msg.type || 'text',
       filename: msg.filename || '',
       fileData: msg.fileData || '',
+      mimeType: msg.mimeType || getMimeType(msg.filename),
       time: msg.time || Math.floor(Date.now()/1000),
       key: k,
       replyTo: msg.reply_to || null,
@@ -453,7 +479,6 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
           }
         }
       }
-      // تحديث حالة التسليم
       const current = [...msgsRef.current];
       let updated = false;
       for (let i = 0; i < current.length; i++) {
@@ -476,12 +501,17 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   };
 
   const sendMessage = async () => {
-    if (!text.trim()) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
     setSending(true);
     const now = Math.floor(Date.now()/1000);
-    const payload = {from: myId, text: text.trim(), type: 'text', time: now, delivery_status: 'sent'};
-    if (replyTo) payload.reply_to = replyTo.text || replyTo;
-    const lm = {from: myId, text: text.trim(), type: 'text', time: now, deliveryStatus: 'sent', key: '', replyTo: replyTo ? (replyTo.text || replyTo) : null};
+    const payload = {from: myId, text: trimmed, type: 'text', time: now, delivery_status: 'sent'};
+    if (replyTo) payload.reply_to = replyTo.text || String(replyTo);
+    const lm = {
+      from: myId, text: trimmed, type: 'text', time: now,
+      deliveryStatus: 'sent', key: '',
+      replyTo: replyTo ? (replyTo.text || String(replyTo)) : null
+    };
     const updated = [...msgsRef.current, lm];
     msgsRef.current = updated;
     setMessages([...updated]);
@@ -491,21 +521,40 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
     setShowEmoji(false);
     const key = await fbSend(contactId, payload);
     if (key) {
-      const idx = msgsRef.current.length - 1;
       const newMsgs = [...msgsRef.current];
-      if (newMsgs[idx]) { newMsgs[idx].key = key; msgsRef.current = newMsgs; setMessages([...newMsgs]); await saveMessages(newMsgs); }
+      const idx = newMsgs.findIndex(m => m === lm || (m.time === lm.time && m.text === lm.text && !m.key));
+      if (idx >= 0) {
+        newMsgs[idx] = {...newMsgs[idx], key};
+        msgsRef.current = newMsgs;
+        setMessages([...newMsgs]);
+        await saveMessages(newMsgs);
+      }
     }
     setSending(false);
   };
 
   const pickImage = async () => {
     try {
-      const result = await launchImageLibrary({mediaType: 'mixed', includeBase64: true, quality: 0.7});
+      const result = await launchImageLibrary({
+        mediaType: 'mixed',
+        includeBase64: true,
+        quality: 0.7,
+      });
       if (result.assets && result.assets[0]) {
         const asset = result.assets[0];
+        const filename = asset.fileName || `image_${Date.now()}.jpg`;
+        const mimeType = asset.type || getMimeType(filename);
         const now = Math.floor(Date.now()/1000);
-        const payload = {from: myId, type: 'file', filename: asset.fileName, fileData: asset.base64, time: now, delivery_status: 'sent'};
-        const lm = {from: myId, type: 'file', filename: asset.fileName, fileData: asset.base64, time: now, deliveryStatus: 'sent', key: ''};
+        const payload = {
+          from: myId, type: 'file', filename,
+          fileData: asset.base64, mimeType,
+          time: now, delivery_status: 'sent'
+        };
+        const lm = {
+          from: myId, type: 'file', filename,
+          fileData: asset.base64, mimeType,
+          time: now, deliveryStatus: 'sent', key: ''
+        };
         const updated = [...msgsRef.current, lm];
         msgsRef.current = updated;
         setMessages([...updated]);
@@ -514,7 +563,12 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
         if (key) {
           const newMsgs = [...msgsRef.current];
           const idx = newMsgs.length - 1;
-          if (newMsgs[idx]) { newMsgs[idx].key = key; msgsRef.current = newMsgs; setMessages([...newMsgs]); await saveMessages(newMsgs); }
+          if (newMsgs[idx]) {
+            newMsgs[idx] = {...newMsgs[idx], key};
+            msgsRef.current = newMsgs;
+            setMessages([...newMsgs]);
+            await saveMessages(newMsgs);
+          }
         }
       }
     } catch (e) { Alert.alert('خطأ', 'تعذر اختيار الملف'); }
@@ -524,10 +578,12 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
     const msg = messages[idx];
     const opts = [
       {text: 'الرد', onPress: () => setReplyTo(msg)},
-      {text: 'نسخ', onPress: () => { /* Clipboard */ Alert.alert('تم النسخ', msg.text || msg.filename); }},
+      {text: 'نسخ', onPress: () => Alert.alert('تم النسخ', msg.text || msg.filename)},
       {text: 'إلغاء', style: 'cancel'},
     ];
-    if (msg.from === myId) opts.splice(2, 0, {text: 'حذف', style: 'destructive', onPress: () => deleteMsg(idx)});
+    if (msg.from === myId) {
+      opts.splice(2, 0, {text: 'حذف', style: 'destructive', onPress: () => deleteMsg(idx)});
+    }
     Alert.alert('خيارات الرسالة', '', opts);
   };
 
@@ -538,17 +594,17 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
     await saveMessages(updated);
   };
 
-  const renderTextWithLinks = (text) => {
-    if (!text) return null;
-    const urls = extractUrls(text);
-    if (urls.length === 0) return <Text style={styles.bubbleText}>{text}</Text>;
-    const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  const renderTextWithLinks = (txt) => {
+    if (!txt) return null;
+    const urls = extractUrls(txt);
+    if (urls.length === 0) return <Text style={styles.bubbleText}>{txt}</Text>;
+    const parts = txt.split(/(https?:\/\/[^\s]+)/g);
     return (
       <Text style={styles.bubbleText}>
         {parts.map((part, i) =>
-          urls.includes(part) ? (
-            <Text key={i} style={styles.linkText} onPress={() => Linking.openURL(part)}>{part}</Text>
-          ) : part
+          urls.includes(part)
+            ? <Text key={i} style={styles.linkText} onPress={() => Linking.openURL(part)}>{part}</Text>
+            : part
         )}
       </Text>
     );
@@ -558,6 +614,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
     const isMine = item.from === myId;
     const time = formatTime(item.time);
     const isImg = isImageFile(item.filename);
+    const mime = item.mimeType || getMimeType(item.filename);
 
     return (
       <TouchableOpacity onLongPress={() => showOptions(index)} delayLongPress={500} activeOpacity={0.8}>
@@ -569,10 +626,16 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
               </View>
             )}
             {item.type === 'file' && isImg && item.fileData ? (
-              <Image source={{uri: `data:image/jpeg;base64,${item.fileData}`}} style={styles.msgImage} resizeMode="cover"/>
+              <Image
+                source={{uri: `data:${mime};base64,${item.fileData}`}}
+                style={styles.msgImage}
+                resizeMode="cover"
+              />
             ) : item.type === 'file' ? (
               <View style={styles.fileContainer}>
-                <Text style={styles.fileIcon}>{isAudioFile(item.filename) ? '🎵' : isVideoFile(item.filename) ? '🎬' : '📎'}</Text>
+                <Text style={styles.fileIcon}>
+                  {isAudioFile(item.filename) ? '🎵' : isVideoFile(item.filename) ? '🎬' : '📎'}
+                </Text>
                 <Text style={styles.fileName}>{item.filename}</Text>
               </View>
             ) : (
@@ -617,7 +680,9 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
         <View style={styles.replyBar}>
           <View style={styles.replyBarContent}>
             <Text style={styles.replyBarLabel}>رد على:</Text>
-            <Text style={styles.replyBarText} numberOfLines={1}>{String(replyTo.text || replyTo.filename || '').slice(0,50)}</Text>
+            <Text style={styles.replyBarText} numberOfLines={1}>
+              {String(replyTo.text || replyTo.filename || '').slice(0,50)}
+            </Text>
           </View>
           <TouchableOpacity onPress={() => setReplyTo(null)}>
             <Text style={styles.replyBarClose}>✕</Text>
@@ -630,7 +695,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.emojiGrid}>
               {EMOJIS.map((em, i) => (
-                <TouchableOpacity key={i} onPress={() => { setText(t => t + em); }}>
+                <TouchableOpacity key={i} onPress={() => setText(t => t + em)}>
                   <Text style={styles.emojiItem}>{em}</Text>
                 </TouchableOpacity>
               ))}
@@ -645,12 +710,16 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
             <Text style={styles.iconBtnText}>😊</Text>
           </TouchableOpacity>
           <TextInput
+            ref={inputRef}
             style={styles.msgInput}
             placeholder="اكتب رسالتك..."
             value={text}
             onChangeText={setText}
-            multiline
+            multiline={false}
             textAlign="right"
+            returnKeyType="send"
+            onSubmitEditing={sendMessage}
+            blurOnSubmit={false}
           />
           <TouchableOpacity onPress={pickImage} style={styles.iconBtn}>
             <Text style={styles.iconBtnText}>📎</Text>
@@ -658,9 +727,12 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
           <TouchableOpacity
             style={[styles.sendBtn, {backgroundColor: text.trim() ? C.btnSend : C.gray}]}
             onPress={sendMessage}
-            disabled={!text.trim() || sending}
+            disabled={sending}
           >
-            {sending ? <ActivityIndicator color="#fff" size="small"/> : <Text style={styles.sendBtnText}>➤</Text>}
+            {sending
+              ? <ActivityIndicator color="#fff" size="small"/>
+              : <Text style={styles.sendBtnText}>➤</Text>
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -682,11 +754,26 @@ export default function App() {
   }, []);
 
   const handleLogin = (id) => { setMyId(id); setScreen('home'); };
-  const openChat = (cid, cname, pendingMsgs) => { setChatInfo({cid, cname, pendingMsgs}); setScreen('chat'); };
+  const openChat = (cid, cname, pendingMsgs) => {
+    setChatInfo({cid, cname, pendingMsgs});
+    setScreen('chat');
+  };
 
-  if (screen === 'loading') return <View style={[styles.flex1, styles.center]}><ActivityIndicator size="large" color={C.headerBg}/></View>;
+  if (screen === 'loading') return (
+    <View style={[styles.flex1, styles.center]}>
+      <ActivityIndicator size="large" color={C.headerBg}/>
+    </View>
+  );
   if (screen === 'welcome') return <WelcomeScreen onLogin={handleLogin}/>;
-  if (screen === 'chat' && chatInfo) return <ChatScreen myId={myId} contactId={chatInfo.cid} contactName={chatInfo.cname} pendingMsgs={chatInfo.pendingMsgs} onBack={() => setScreen('home')}/>;
+  if (screen === 'chat' && chatInfo) return (
+    <ChatScreen
+      myId={myId}
+      contactId={chatInfo.cid}
+      contactName={chatInfo.cname}
+      pendingMsgs={chatInfo.pendingMsgs}
+      onBack={() => setScreen('home')}
+    />
+  );
   return <HomeScreen myId={myId} onOpenChat={openChat}/>;
 }
 
@@ -708,7 +795,7 @@ const styles = StyleSheet.create({
   addBtnText: {color:C.white, fontSize:24, fontWeight:'bold'},
   addForm: {backgroundColor:C.white, padding:12, borderBottomWidth:1, borderBottomColor:'#eee'},
   myIdText: {textAlign:'center', color:C.gray, fontSize:12, padding:6, backgroundColor:'#f0f0f0'},
-  contactRow: {flexDirection:'row', alignItems:'center', backgroundColor:C.white, marginHorizontal:0, paddingHorizontal:16, paddingVertical:12, borderBottomWidth:1, borderBottomColor:'#f0f0f0', gap:12},
+  contactRow: {flexDirection:'row', alignItems:'center', backgroundColor:C.white, paddingHorizontal:16, paddingVertical:12, borderBottomWidth:1, borderBottomColor:'#f0f0f0', gap:12},
   contactAvatar: {width:48, height:48, borderRadius:24, backgroundColor:C.headerBg, alignItems:'center', justifyContent:'center'},
   contactAvatarText: {color:C.white, fontSize:20, fontWeight:'bold'},
   contactInfo: {flex:1},
@@ -716,7 +803,7 @@ const styles = StyleSheet.create({
   contactId: {fontSize:12, color:C.gray},
   badge: {backgroundColor:C.btnSend, borderRadius:12, minWidth:24, height:24, alignItems:'center', justifyContent:'center', paddingHorizontal:6},
   badgeText: {color:C.white, fontSize:12, fontWeight:'bold'},
-  emptyContainer: {flex:1, alignItems:'center', justifyContent:'center', padding:40},
+  emptyContainer: {alignItems:'center', justifyContent:'center', padding:40},
   emptyText: {fontSize:18, color:C.gray, fontWeight:'bold'},
   emptySubText: {fontSize:14, color:C.gray, marginTop:8},
   chatHeader: {backgroundColor:C.headerBg, flexDirection:'row', alignItems:'center', padding:12, gap:10},
@@ -749,10 +836,10 @@ const styles = StyleSheet.create({
   emojiPanel: {backgroundColor:C.white, borderTopWidth:1, borderTopColor:'#eee', padding:8, height:80},
   emojiGrid: {flexDirection:'row', flexWrap:'wrap', gap:8},
   emojiItem: {fontSize:28, padding:4},
-  inputArea: {flexDirection:'row', alignItems:'flex-end', backgroundColor:C.white, padding:8, gap:6, borderTopWidth:1, borderTopColor:'#eee'},
+  inputArea: {flexDirection:'row', alignItems:'center', backgroundColor:C.white, padding:8, gap:6, borderTopWidth:1, borderTopColor:'#eee'},
   iconBtn: {padding:8},
   iconBtnText: {fontSize:24},
-  msgInput: {flex:1, backgroundColor:'#f5f5f5', borderRadius:20, paddingHorizontal:14, paddingVertical:8, fontSize:15, maxHeight:100, minHeight:40},
+  msgInput: {flex:1, backgroundColor:'#f5f5f5', borderRadius:20, paddingHorizontal:14, paddingVertical:8, fontSize:15, height:44},
   sendBtn: {width:44, height:44, borderRadius:22, alignItems:'center', justifyContent:'center'},
   sendBtnText: {color:C.white, fontSize:20},
 });
