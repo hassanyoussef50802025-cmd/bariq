@@ -31,6 +31,17 @@ jobs:
           npx @react-native-community/cli@12 init BariqApp --version 0.73.0 --skip-install --npm
           cp App.js BariqApp/App.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
+          # نسخ اللوجو كأيقونة للتطبيق
+          mkdir -p BariqApp/android/app/src/main/res/mipmap-hdpi
+          mkdir -p BariqApp/android/app/src/main/res/mipmap-mdpi
+          mkdir -p BariqApp/android/app/src/main/res/mipmap-xhdpi
+          mkdir -p BariqApp/android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p BariqApp/android/app/src/main/res/mipmap-xxxhdpi
+          convert logo.png -resize 72x72 BariqApp/android/app/src/main/res/mipmap-hdpi/ic_launcher.png 2>/dev/null || true
+          convert logo.png -resize 48x48 BariqApp/android/app/src/main/res/mipmap-mdpi/ic_launcher.png 2>/dev/null || true
+          convert logo.png -resize 96x96 BariqApp/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png 2>/dev/null || true
+          convert logo.png -resize 144x144 BariqApp/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png 2>/dev/null || true
+          convert logo.png -resize 192x192 BariqApp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png 2>/dev/null || true
 
       - name: Install dependencies
         run: |
@@ -39,6 +50,7 @@ jobs:
           npm install @react-native-async-storage/async-storage@1.21.0
           npm install react-native-image-picker@7.1.0
           npm install @notifee/react-native@7.8.2
+          npm install react-native-background-fetch@4.2.1
 
       - name: Build APK
         run: |
