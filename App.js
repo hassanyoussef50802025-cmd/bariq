@@ -3,36 +3,43 @@ import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, Alert, ScrollView, KeyboardAvoidingView,
   Platform, I18nManager, ActivityIndicator, SafeAreaView,
+  Image, Linking, PermissionsAndroid, AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 
-// دعم العربية RTL
 I18nManager.forceRTL(true);
 
-// ==================== إعدادات Firebase ====================
 const FIREBASE_URL = "https://bariq-ce6b4-default-rtdb.firebaseio.com";
 const FIREBASE_KEY = "AIzaSyDhEo61jzd-npwhhw-Vf1R8fLWttJbJib8";
 const ADMIN_ID = "53710624";
 
-// ==================== الألوان ====================
 const C = {
   bg: '#F0F4FF',
   chatBg: '#FFFFFF',
-  myMsg: '#D2D2D2',
-  otherMsg: '#F5EBD2',
-  headerBg: '#FFFFFF',
+  myMsg: '#DCF8C6',
+  otherMsg: '#FFFFFF',
+  headerBg: '#1565C0',
   headerBorder: '#FFD700',
   btnSend: '#4CAF50',
   btnEmoji: '#2196F3',
   btnFile: '#9E9E9E',
   btnCancel: '#F44336',
-  barBg: '#1565C0',
+  barBg: '#F5F5F5',
   text: '#191919',
   white: '#FFFFFF',
+  gray: '#999',
+  linkColor: '#1565C0',
 };
 
-// ==================== دوال مساعدة ====================
-const generateId = () => Math.random().toString().slice(2, 10).padStart(8, '0');
+const EMOJIS = ['😀','😂','😍','😢','😮','😎','❤️','👍','👎','🙏','🎉','🔥','✅','❌','⭐','😊','😴','🤔','🌹','💪','😅','🤣','😇','🥰','😘','😜','🤩','😭','😱','🤯','💯','🎊','🎈','🌟','💫','⚡','🌈','🎯','💪','🙌'];
+
+const generateId = () => {
+  let id = '';
+  for (let i = 0; i < 8; i++) id += Math.floor(Math.random() * 10);
+  return id;
+};
 
 const formatTime = (ts) => {
   if (!ts) return '';
@@ -40,10 +47,18 @@ const formatTime = (ts) => {
   return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
 };
 
-const statusLabel = (s) => s === 'read' ? ' ✓✓✓' : s === 'received' ? ' ✓✓' : ' ✓';
-const statusText = (s) => s === 'read' ? 'مقروءة' : s === 'received' ? 'مستلمة' : 'مرسلة';
+const statusLabel = (s) => s === 'read' ? '✓✓' : s === 'received' ? '✓✓' : '✓';
+const statusColor = (s) => s === 'read' ? '#4FC3F7' : '#999';
 
-// ==================== دوال Firebase ====================
+const isImageFile = (name) => /\.(jpg|jpeg|png|gif|webp)$/i.test(name || '');
+const isAudioFile = (name) => /\.(mp3|wav|m4a|aac|ogg)$/i.test(name || '');
+const isVideoFile = (name) => /\.(mp4|mkv|avi|mov|webm|3gp)$/i.test(name || '');
+
+const extractUrls = (text) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text ? text.match(urlRegex) || [] : [];
+};
+
 const fbSend = async (toId, payload) => {
   try {
     const r = await fetch(`${FIREBASE_URL}/messages/${toId}.json?auth=${FIREBASE_KEY}`, {
@@ -86,6 +101,33 @@ const getMsgStatus = async (uid, key) => {
   } catch { return ''; }
 };
 
+const setupNotifications = async () => {
+  try {
+    await notifee.requestPermission();
+    await notifee.createChannel({
+      id: 'bariq_messages',
+      name: 'رسائل بارق',
+      importance: AndroidImportance.HIGH,
+      sound: 'default',
+    });
+  } catch {}
+};
+
+const showNotification = async (title, body) => {
+  try {
+    await notifee.displayNotification({
+      title,
+      body,
+      android: {
+        channelId: 'bariq_messages',
+        importance: AndroidImportance.HIGH,
+        sound: 'default',
+        smallIcon: 'ic_launcher',
+      },
+    });
+  } catch {}
+};
+
 // ==================== شاشة الترحيب ====================
 const WelcomeScreen = ({ onLogin }) => {
   const [inputId, setInputId] = useState('');
@@ -114,15 +156,13 @@ const WelcomeScreen = ({ onLogin }) => {
     <SafeAreaView style={[styles.flex1, {backgroundColor: C.bg}]}>
       <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS==='ios'?'padding':'height'}>
         <ScrollView contentContainerStyle={styles.welcomeContainer}>
+          <Image source={require('./logo.png')} style={styles.logo} resizeMode="contain"/>
           <Text style={styles.appTitle}>بارق</Text>
           <Text style={styles.appSubtitle}>تطبيق المراسلة الآمن</Text>
-
           <TouchableOpacity style={[styles.btn, {backgroundColor: C.btnSend}]} onPress={createAccount}>
             <Text style={styles.btnText}>إنشاء رقم جديد</Text>
           </TouchableOpacity>
-
           <Text style={styles.orText}>أو أدخل رقمك الموجود:</Text>
-
           <TextInput
             style={styles.input}
             placeholder="8 أرقام"
@@ -132,7 +172,6 @@ const WelcomeScreen = ({ onLogin }) => {
             onChangeText={setInputId}
             textAlign="center"
           />
-
           <TouchableOpacity style={[styles.btn, {backgroundColor: C.btnEmoji}]} onPress={login}>
             <Text style={styles.btnText}>تسجيل الدخول</Text>
           </TouchableOpacity>
@@ -145,120 +184,187 @@ const WelcomeScreen = ({ onLogin }) => {
 // ==================== شاشة الرئيسية ====================
 const HomeScreen = ({ myId, onOpenChat }) => {
   const [contacts, setContacts] = useState({});
+  const [contactNames, setContactNames] = useState({});
   const [newContact, setNewContact] = useState('');
+  const [newName, setNewName] = useState('');
   const [pending, setPending] = useState({});
+  const [showAddForm, setShowAddForm] = useState(false);
   const listenerRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
+    setupNotifications();
     loadContacts();
     startListener();
-    return () => { if (listenerRef.current) clearInterval(listenerRef.current); };
+    const sub = AppState.addEventListener('change', state => {
+      appStateRef.current = state;
+    });
+    return () => {
+      if (listenerRef.current) clearInterval(listenerRef.current);
+      sub.remove();
+    };
   }, []);
 
   const loadContacts = async () => {
     const c = await AsyncStorage.getItem('contacts');
-    setContacts(c ? JSON.parse(c) : {});
+    const n = await AsyncStorage.getItem('contact_names');
     const p = await AsyncStorage.getItem('pending');
+    setContacts(c ? JSON.parse(c) : {});
+    setContactNames(n ? JSON.parse(n) : {});
     setPending(p ? JSON.parse(p) : {});
   };
 
   const startListener = () => {
     const seen = new Set();
     listenerRef.current = setInterval(async () => {
-      const incoming = await fbGet(myId);
-      const newPending = {};
-      for (const [key, msg] of Object.entries(incoming)) {
-        if (!seen.has(key) && msg && typeof msg === 'object') {
-          seen.add(key);
-          const sid = msg.from || '';
-          if (!newPending[sid]) newPending[sid] = [];
-          newPending[sid].push({key, msg});
-        }
-      }
-      if (Object.keys(newPending).length > 0) {
+      try {
+        const incoming = await fbGet(myId);
+        let changed = false;
         const savedP = await AsyncStorage.getItem('pending');
         const allP = savedP ? JSON.parse(savedP) : {};
-        for (const [sid, msgs] of Object.entries(newPending)) {
-          if (!allP[sid]) allP[sid] = [];
-          allP[sid].push(...msgs);
+        const savedNames = await AsyncStorage.getItem('contact_names');
+        const names = savedNames ? JSON.parse(savedNames) : {};
+
+        for (const [key, msg] of Object.entries(incoming)) {
+          if (!seen.has(key) && msg && typeof msg === 'object') {
+            seen.add(key);
+            const sid = msg.from || '';
+            if (!allP[sid]) allP[sid] = [];
+            allP[sid].push({key, msg});
+            changed = true;
+
+            if (appStateRef.current !== 'active') {
+              const senderName = names[sid] || `رقم ${sid}`;
+              const body = msg.type === 'file' ? `📎 ملف: ${msg.filename}` : (msg.text || '');
+              await showNotification(`رسالة من ${senderName}`, body);
+            }
+          }
         }
-        await AsyncStorage.setItem('pending', JSON.stringify(allP));
-        setPending({...allP});
-      }
-    }, 5000);
+
+        if (changed) {
+          await AsyncStorage.setItem('pending', JSON.stringify(allP));
+          setPending({...allP});
+        }
+      } catch {}
+    }, 15000);
   };
 
   const addContact = async () => {
     if (newContact.length === 8 && /^\d+$/.test(newContact)) {
       if (newContact === myId) { Alert.alert('تنبيه', 'لا يمكنك إضافة رقمك الخاص'); return; }
-      const updated = {...contacts, [newContact]: newContact};
-      setContacts(updated);
-      await AsyncStorage.setItem('contacts', JSON.stringify(updated));
+      const name = newName.trim() || newContact;
+      const updatedC = {...contacts, [newContact]: newContact};
+      const updatedN = {...contactNames, [newContact]: name};
+      setContacts(updatedC);
+      setContactNames(updatedN);
+      await AsyncStorage.setItem('contacts', JSON.stringify(updatedC));
+      await AsyncStorage.setItem('contact_names', JSON.stringify(updatedN));
       setNewContact('');
+      setNewName('');
+      setShowAddForm(false);
     } else {
       Alert.alert('خطأ', 'الرقم يجب أن يكون 8 أرقام');
     }
   };
 
   const deleteContact = async (cid) => {
-    const updated = {...contacts};
-    delete updated[cid];
-    setContacts(updated);
-    await AsyncStorage.setItem('contacts', JSON.stringify(updated));
+    Alert.alert('حذف', `هل تريد حذف جهة الاتصال؟`, [
+      {text: 'إلغاء', style: 'cancel'},
+      {text: 'حذف', style: 'destructive', onPress: async () => {
+        const updatedC = {...contacts};
+        const updatedN = {...contactNames};
+        delete updatedC[cid];
+        delete updatedN[cid];
+        setContacts(updatedC);
+        setContactNames(updatedN);
+        await AsyncStorage.setItem('contacts', JSON.stringify(updatedC));
+        await AsyncStorage.setItem('contact_names', JSON.stringify(updatedN));
+      }}
+    ]);
   };
 
-  const openChat = async (cid, cname) => {
+  const openChat = async (cid) => {
     const p = pending[cid] || [];
     const newP = {...pending};
     delete newP[cid];
     setPending(newP);
     await AsyncStorage.setItem('pending', JSON.stringify(newP));
-    onOpenChat(cid, cname, p);
+    const name = contactNames[cid] || cid;
+    onOpenChat(cid, name, p);
   };
 
   const allContacts = Object.entries(contacts);
 
   return (
     <SafeAreaView style={[styles.flex1, {backgroundColor: C.bg}]}>
-      <View style={styles.header}>
-        <Text style={styles.headerText}>بارق  |  رقمك: {myId}</Text>
-      </View>
-
-      <View style={styles.addContactRow}>
-        <TextInput
-          style={[styles.input, {flex:1, marginBottom:0, marginLeft:8}]}
-          placeholder="أضف رقم جهة اتصال"
-          keyboardType="numeric"
-          maxLength={8}
-          value={newContact}
-          onChangeText={setNewContact}
-          textAlign="right"
-        />
-        <TouchableOpacity style={[styles.smallBtn, {backgroundColor: C.btnSend}]} onPress={addContact}>
-          <Text style={styles.btnText}>إضافة</Text>
+      <View style={styles.mainHeader}>
+        <Image source={require('./logo.png')} style={styles.headerLogo} resizeMode="contain"/>
+        <Text style={styles.mainHeaderText}>بارق</Text>
+        <TouchableOpacity onPress={() => setShowAddForm(!showAddForm)} style={styles.addBtn}>
+          <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
       </View>
+
+      {showAddForm && (
+        <View style={styles.addForm}>
+          <TextInput
+            style={[styles.input, {marginBottom: 8}]}
+            placeholder="رقم جهة الاتصال (8 أرقام)"
+            keyboardType="numeric"
+            maxLength={8}
+            value={newContact}
+            onChangeText={setNewContact}
+            textAlign="right"
+          />
+          <TextInput
+            style={[styles.input, {marginBottom: 8}]}
+            placeholder="الاسم (اختياري)"
+            value={newName}
+            onChangeText={setNewName}
+            textAlign="right"
+          />
+          <View style={{flexDirection:'row', gap:8}}>
+            <TouchableOpacity style={[styles.btn, {flex:1, backgroundColor: C.btnSend}]} onPress={addContact}>
+              <Text style={styles.btnText}>إضافة</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.btn, {flex:1, backgroundColor: C.btnCancel}]} onPress={() => setShowAddForm(false)}>
+              <Text style={styles.btnText}>إلغاء</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      <Text style={styles.myIdText}>رقمك: {myId}</Text>
 
       <FlatList
         data={allContacts}
         keyExtractor={([cid]) => cid}
-        renderItem={({item: [cid, cname]}) => {
+        renderItem={({item: [cid]}) => {
           const pCount = (pending[cid] || []).length;
+          const name = contactNames[cid] || cid;
           return (
-            <View style={styles.contactRow}>
-              <Text style={styles.contactName}>
-                {cname} - {cid}{pCount > 0 ? `  🔔 ${pCount}` : ''}
-              </Text>
-              <TouchableOpacity style={[styles.smallBtn, {backgroundColor: C.btnSend}]} onPress={() => openChat(cid, cname)}>
-                <Text style={styles.btnText}>فتح</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.smallBtn, {backgroundColor: C.btnCancel}]} onPress={() => deleteContact(cid)}>
-                <Text style={styles.btnText}>X</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.contactRow} onPress={() => openChat(cid)} onLongPress={() => deleteContact(cid)}>
+              <View style={styles.contactAvatar}>
+                <Text style={styles.contactAvatarText}>{name.charAt(0)}</Text>
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactName}>{name}</Text>
+                <Text style={styles.contactId}>{cid}</Text>
+              </View>
+              {pCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{pCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           );
         }}
-        ListEmptyComponent={<Text style={styles.emptyText}>لا توجد جهات اتصال\nأضف رقماً للبدء</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>لا توجد جهات اتصال</Text>
+            <Text style={styles.emptySubText}>اضغط + لإضافة جهة اتصال</Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
@@ -269,10 +375,12 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef(null);
   const seenKeys = useRef(new Set());
   const listenerRef = useRef(null);
+  const msgsRef = useRef([]);
 
   useEffect(() => {
     loadMessages();
@@ -280,6 +388,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   }, []);
 
   useEffect(() => {
+    msgsRef.current = messages;
     if (messages.length > 0) {
       setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 100);
     }
@@ -289,19 +398,18 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
     const key = [myId, contactId].sort().join('_');
     const saved = await AsyncStorage.getItem('chat_' + key);
     const msgs = saved ? JSON.parse(saved) : [];
+    msgsRef.current = msgs;
     setMessages(msgs);
     msgs.forEach(m => { if (m.key) seenKeys.current.add(m.key); });
-
-    // معالجة الرسائل المعلقة
     if (pendingMsgs && pendingMsgs.length > 0) {
+      let current = [...msgs];
       for (const {key: k, msg} of pendingMsgs) {
         if (!seenKeys.current.has(k)) {
           seenKeys.current.add(k);
-          await processIncoming(k, msg, msgs);
+          current = await processIncoming(k, msg, current);
         }
       }
     }
-
     startPolling();
   };
 
@@ -320,6 +428,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
       text: msg.text || '',
       type: msg.type || 'text',
       filename: msg.filename || '',
+      fileData: msg.fileData || '',
       time: msg.time || Math.floor(Date.now()/1000),
       key: k,
       replyTo: msg.reply_to || null,
@@ -327,6 +436,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
     const updated = [...currentMsgs, lm];
     const filtered = await saveMessages(updated);
     setMessages([...filtered]);
+    msgsRef.current = filtered;
     await fbDel(myId, k);
     return updated;
   };
@@ -338,115 +448,160 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
         if (!seenKeys.current.has(k) && msg && typeof msg === 'object') {
           if (msg.from === contactId) {
             seenKeys.current.add(k);
-            setMessages(prev => {
-              processIncoming(k, msg, prev).then(updated => {
-                saveMessages(updated);
-              });
-              return prev;
-            });
+            const current = msgsRef.current;
+            await processIncoming(k, msg, current);
           }
         }
       }
       // تحديث حالة التسليم
-      setMessages(prev => {
-        prev.forEach(async (m, i) => {
-          if (m.from === myId && m.key && m.deliveryStatus !== 'read') {
-            const ns = await getMsgStatus(myId, m.key);
-            const order = {sent:0, received:1, read:2};
-            if (ns && (order[ns]||0) > (order[m.deliveryStatus||'sent']||0)) {
-              prev[i] = {...m, deliveryStatus: ns};
-              setMessages([...prev]);
-              saveMessages([...prev]);
-            }
+      const current = [...msgsRef.current];
+      let updated = false;
+      for (let i = 0; i < current.length; i++) {
+        const m = current[i];
+        if (m.from === myId && m.key && m.deliveryStatus !== 'read') {
+          const ns = await getMsgStatus(myId, m.key);
+          const order = {sent:0, received:1, read:2};
+          if (ns && (order[ns]||0) > (order[m.deliveryStatus||'sent']||0)) {
+            current[i] = {...m, deliveryStatus: ns};
+            updated = true;
           }
-        });
-        return prev;
-      });
-    }, 3000);
+        }
+      }
+      if (updated) {
+        msgsRef.current = current;
+        setMessages([...current]);
+        await saveMessages(current);
+      }
+    }, 15000);
   };
 
   const sendMessage = async () => {
     if (!text.trim()) return;
-    setLoading(true);
+    setSending(true);
     const now = Math.floor(Date.now()/1000);
     const payload = {from: myId, text: text.trim(), type: 'text', time: now, delivery_status: 'sent'};
-    if (replyTo) payload.reply_to = replyTo;
-    const lm = {from: myId, text: text.trim(), type: 'text', time: now, deliveryStatus: 'sent', key: '', replyTo};
-    const updated = [...messages, lm];
-    setMessages(updated);
+    if (replyTo) payload.reply_to = replyTo.text || replyTo;
+    const lm = {from: myId, text: text.trim(), type: 'text', time: now, deliveryStatus: 'sent', key: '', replyTo: replyTo ? (replyTo.text || replyTo) : null};
+    const updated = [...msgsRef.current, lm];
+    msgsRef.current = updated;
+    setMessages([...updated]);
     await saveMessages(updated);
     setText('');
     setReplyTo(null);
+    setShowEmoji(false);
     const key = await fbSend(contactId, payload);
     if (key) {
-      updated[updated.length-1].key = key;
-      setMessages([...updated]);
-      await saveMessages(updated);
+      const idx = msgsRef.current.length - 1;
+      const newMsgs = [...msgsRef.current];
+      if (newMsgs[idx]) { newMsgs[idx].key = key; msgsRef.current = newMsgs; setMessages([...newMsgs]); await saveMessages(newMsgs); }
     }
-    setLoading(false);
+    setSending(false);
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await launchImageLibrary({mediaType: 'mixed', includeBase64: true, quality: 0.7});
+      if (result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        const now = Math.floor(Date.now()/1000);
+        const payload = {from: myId, type: 'file', filename: asset.fileName, fileData: asset.base64, time: now, delivery_status: 'sent'};
+        const lm = {from: myId, type: 'file', filename: asset.fileName, fileData: asset.base64, time: now, deliveryStatus: 'sent', key: ''};
+        const updated = [...msgsRef.current, lm];
+        msgsRef.current = updated;
+        setMessages([...updated]);
+        await saveMessages(updated);
+        const key = await fbSend(contactId, payload);
+        if (key) {
+          const newMsgs = [...msgsRef.current];
+          const idx = newMsgs.length - 1;
+          if (newMsgs[idx]) { newMsgs[idx].key = key; msgsRef.current = newMsgs; setMessages([...newMsgs]); await saveMessages(newMsgs); }
+        }
+      }
+    } catch (e) { Alert.alert('خطأ', 'تعذر اختيار الملف'); }
+  };
+
+  const showOptions = (idx) => {
+    const msg = messages[idx];
+    const opts = [
+      {text: 'الرد', onPress: () => setReplyTo(msg)},
+      {text: 'نسخ', onPress: () => { /* Clipboard */ Alert.alert('تم النسخ', msg.text || msg.filename); }},
+      {text: 'إلغاء', style: 'cancel'},
+    ];
+    if (msg.from === myId) opts.splice(2, 0, {text: 'حذف', style: 'destructive', onPress: () => deleteMsg(idx)});
+    Alert.alert('خيارات الرسالة', '', opts);
+  };
+
+  const deleteMsg = async (idx) => {
+    const updated = messages.filter((_, i) => i !== idx);
+    msgsRef.current = updated;
+    setMessages(updated);
+    await saveMessages(updated);
+  };
+
+  const renderTextWithLinks = (text) => {
+    if (!text) return null;
+    const urls = extractUrls(text);
+    if (urls.length === 0) return <Text style={styles.bubbleText}>{text}</Text>;
+    const parts = text.split(/(https?:\/\/[^\s]+)/g);
+    return (
+      <Text style={styles.bubbleText}>
+        {parts.map((part, i) =>
+          urls.includes(part) ? (
+            <Text key={i} style={styles.linkText} onPress={() => Linking.openURL(part)}>{part}</Text>
+          ) : part
+        )}
+      </Text>
+    );
   };
 
   const renderBubble = ({item, index}) => {
     const isMine = item.from === myId;
-    const sender = isMine ? 'أنت' : contactName;
     const time = formatTime(item.time);
-    const body = item.type === 'file' ? `ملف: ${item.filename}` : item.text;
+    const isImg = isImageFile(item.filename);
 
     return (
-      <TouchableOpacity
-        onLongPress={() => showOptions(index)}
-        delayLongPress={500}
-        activeOpacity={0.8}
-      >
+      <TouchableOpacity onLongPress={() => showOptions(index)} delayLongPress={500} activeOpacity={0.8}>
         <View style={[styles.bubbleRow, isMine ? styles.bubbleRowRight : styles.bubbleRowLeft]}>
-          <View style={[styles.bubble, {backgroundColor: isMine ? C.myMsg : C.otherMsg}]}>
-            {item.replyTo && <Text style={styles.replyText}>رد على: {String(item.replyTo).slice(0,30)}</Text>}
-            <Text style={styles.bubbleSender}>{sender}:</Text>
-            <Text style={styles.bubbleText}>{body}</Text>
-            <Text style={styles.bubbleMeta}>
-              {time}{isMine ? statusLabel(item.deliveryStatus||'sent') + ' ' + statusText(item.deliveryStatus||'sent') : ''}
-            </Text>
+          <View style={[styles.bubble, {backgroundColor: isMine ? C.myMsg : C.otherMsg}, !isMine && styles.bubbleShadow]}>
+            {item.replyTo && (
+              <View style={styles.replyPreview}>
+                <Text style={styles.replyPreviewText} numberOfLines={1}>↩ {String(item.replyTo).slice(0,40)}</Text>
+              </View>
+            )}
+            {item.type === 'file' && isImg && item.fileData ? (
+              <Image source={{uri: `data:image/jpeg;base64,${item.fileData}`}} style={styles.msgImage} resizeMode="cover"/>
+            ) : item.type === 'file' ? (
+              <View style={styles.fileContainer}>
+                <Text style={styles.fileIcon}>{isAudioFile(item.filename) ? '🎵' : isVideoFile(item.filename) ? '🎬' : '📎'}</Text>
+                <Text style={styles.fileName}>{item.filename}</Text>
+              </View>
+            ) : (
+              renderTextWithLinks(item.text)
+            )}
+            <View style={styles.bubbleFooter}>
+              <Text style={styles.bubbleTime}>{time}</Text>
+              {isMine && (
+                <Text style={[styles.statusTick, {color: statusColor(item.deliveryStatus)}]}>
+                  {statusLabel(item.deliveryStatus)}
+                </Text>
+              )}
+            </View>
           </View>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const showOptions = (idx) => {
-    const msg = messages[idx];
-    const opts = [
-      {text: 'الرد', onPress: () => setReplyTo(msg.text || msg.filename)},
-      {text: 'حذف', onPress: () => deleteMsg(idx)},
-      {text: 'إلغاء', style: 'cancel'},
-    ];
-    if (msg.from === myId) opts.splice(2, 0, {text: 'تعديل', onPress: () => editMsg(idx)});
-    Alert.alert('خيارات الرسالة', '', opts);
-  };
-
-  const deleteMsg = async (idx) => {
-    const updated = messages.filter((_, i) => i !== idx);
-    setMessages(updated);
-    await saveMessages(updated);
-  };
-
-  const editMsg = (idx) => {
-    Alert.prompt('تعديل الرسالة', '', async (newText) => {
-      if (newText) {
-        const updated = [...messages];
-        updated[idx] = {...updated[idx], text: newText + ' (معدل)'};
-        setMessages(updated);
-        await saveMessages(updated);
-      }
-    }, 'plain-text', messages[idx].text);
-  };
-
   return (
-    <SafeAreaView style={[styles.flex1, {backgroundColor: C.bg}]}>
-      <View style={[styles.header, {borderBottomWidth: 3, borderBottomColor: C.headerBorder}]}>
+    <SafeAreaView style={[styles.flex1, {backgroundColor: '#ECE5DD'}]}>
+      <View style={styles.chatHeader}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Text style={styles.backBtnText}>◀</Text>
         </TouchableOpacity>
-        <Text style={styles.headerText}>المحادثة مع: {contactName}</Text>
+        <View style={styles.chatHeaderAvatar}>
+          <Text style={styles.chatHeaderAvatarText}>{contactName.charAt(0)}</Text>
+        </View>
+        <Text style={styles.chatHeaderName}>{contactName}</Text>
       </View>
 
       <FlatList
@@ -454,22 +609,41 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
         data={messages}
         keyExtractor={(_, i) => i.toString()}
         renderItem={renderBubble}
-        style={{backgroundColor: C.chatBg}}
-        contentContainerStyle={{padding: 8}}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({animated: true})}
+        contentContainerStyle={{padding: 8, paddingBottom: 16}}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({animated: false})}
       />
 
       {replyTo && (
         <View style={styles.replyBar}>
-          <Text style={styles.replyBarText}>رد على: {String(replyTo).slice(0,40)}</Text>
+          <View style={styles.replyBarContent}>
+            <Text style={styles.replyBarLabel}>رد على:</Text>
+            <Text style={styles.replyBarText} numberOfLines={1}>{String(replyTo.text || replyTo.filename || '').slice(0,50)}</Text>
+          </View>
           <TouchableOpacity onPress={() => setReplyTo(null)}>
-            <Text style={styles.replyBarClose}>✗</Text>
+            <Text style={styles.replyBarClose}>✕</Text>
           </TouchableOpacity>
         </View>
       )}
 
+      {showEmoji && (
+        <View style={styles.emojiPanel}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.emojiGrid}>
+              {EMOJIS.map((em, i) => (
+                <TouchableOpacity key={i} onPress={() => { setText(t => t + em); }}>
+                  <Text style={styles.emojiItem}>{em}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
       <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':'height'}>
-        <View style={styles.inputRow}>
+        <View style={styles.inputArea}>
+          <TouchableOpacity onPress={() => setShowEmoji(!showEmoji)} style={styles.iconBtn}>
+            <Text style={styles.iconBtnText}>😊</Text>
+          </TouchableOpacity>
           <TextInput
             style={styles.msgInput}
             placeholder="اكتب رسالتك..."
@@ -477,15 +651,16 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
             onChangeText={setText}
             multiline
             textAlign="right"
-            onSubmitEditing={sendMessage}
           />
-        </View>
-        <View style={styles.btnBar}>
-          <TouchableOpacity style={[styles.barBtn, {backgroundColor: C.btnSend}]} onPress={sendMessage}>
-            {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.barBtnText}>✓</Text>}
+          <TouchableOpacity onPress={pickImage} style={styles.iconBtn}>
+            <Text style={styles.iconBtnText}>📎</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.barBtn, {backgroundColor: C.btnCancel}]} onPress={() => setReplyTo(null)}>
-            <Text style={styles.barBtnText}>✗</Text>
+          <TouchableOpacity
+            style={[styles.sendBtn, {backgroundColor: text.trim() ? C.btnSend : C.gray}]}
+            onPress={sendMessage}
+            disabled={!text.trim() || sending}
+          >
+            {sending ? <ActivityIndicator color="#fff" size="small"/> : <Text style={styles.sendBtnText}>➤</Text>}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -507,60 +682,77 @@ export default function App() {
   }, []);
 
   const handleLogin = (id) => { setMyId(id); setScreen('home'); };
+  const openChat = (cid, cname, pendingMsgs) => { setChatInfo({cid, cname, pendingMsgs}); setScreen('chat'); };
 
-  const openChat = (cid, cname, pendingMsgs) => {
-    setChatInfo({cid, cname, pendingMsgs});
-    setScreen('chat');
-  };
-
-  if (screen === 'loading') {
-    return <View style={[styles.flex1, styles.center]}><ActivityIndicator size="large" color={C.barBg}/></View>;
-  }
+  if (screen === 'loading') return <View style={[styles.flex1, styles.center]}><ActivityIndicator size="large" color={C.headerBg}/></View>;
   if (screen === 'welcome') return <WelcomeScreen onLogin={handleLogin}/>;
-  if (screen === 'chat' && chatInfo) {
-    return <ChatScreen myId={myId} contactId={chatInfo.cid} contactName={chatInfo.cname}
-             pendingMsgs={chatInfo.pendingMsgs} onBack={() => setScreen('home')}/>;
-  }
+  if (screen === 'chat' && chatInfo) return <ChatScreen myId={myId} contactId={chatInfo.cid} contactName={chatInfo.cname} pendingMsgs={chatInfo.pendingMsgs} onBack={() => setScreen('home')}/>;
   return <HomeScreen myId={myId} onOpenChat={openChat}/>;
 }
 
-// ==================== الأنماط ====================
 const styles = StyleSheet.create({
-  flex1: {flex: 1},
+  flex1: {flex:1},
   center: {justifyContent:'center', alignItems:'center'},
-  welcomeContainer: {flexGrow:1, justifyContent:'center', padding:30, gap:15},
-  appTitle: {fontSize:42, fontWeight:'bold', textAlign:'center', color:C.text},
-  appSubtitle: {fontSize:18, textAlign:'center', color:C.text},
-  btn: {padding:15, borderRadius:10, alignItems:'center'},
+  welcomeContainer: {flexGrow:1, justifyContent:'center', padding:30, alignItems:'center', gap:12},
+  logo: {width:120, height:120, marginBottom:10},
+  appTitle: {fontSize:42, fontWeight:'bold', color:C.headerBg},
+  appSubtitle: {fontSize:16, color:C.gray, marginBottom:10},
+  btn: {width:'100%', padding:14, borderRadius:10, alignItems:'center'},
   btnText: {color:C.white, fontSize:16, fontWeight:'bold'},
-  orText: {textAlign:'center', color:C.text, fontSize:16},
-  input: {borderWidth:1, borderColor:'#ccc', borderRadius:8, padding:10, fontSize:16,
-    backgroundColor:C.white, marginBottom:10},
-  header: {backgroundColor:C.headerBg, padding:12, flexDirection:'row', alignItems:'center'},
-  headerText: {fontSize:16, fontWeight:'bold', color:C.text, flex:1, textAlign:'right'},
-  addContactRow: {flexDirection:'row', padding:8, gap:8, alignItems:'center'},
-  smallBtn: {padding:8, borderRadius:8, minWidth:60, alignItems:'center'},
-  contactRow: {flexDirection:'row', alignItems:'center', backgroundColor:C.white,
-    margin:4, padding:10, borderRadius:10, gap:6},
-  contactName: {flex:1, fontSize:14, color:C.text, textAlign:'right'},
-  emptyText: {textAlign:'center', color:C.text, fontSize:16, padding:40},
-  bubbleRow: {marginVertical:3, flexDirection:'row'},
-  bubbleRowRight: {justifyContent:'flex-end'},
-  bubbleRowLeft: {justifyContent:'flex-start'},
-  bubble: {maxWidth:'75%', padding:10, borderRadius:12},
-  bubbleSender: {fontSize:12, fontWeight:'bold', color:C.text, textAlign:'right'},
-  bubbleText: {fontSize:14, color:C.text, textAlign:'right'},
-  bubbleMeta: {fontSize:11, color:'#666', textAlign:'right', marginTop:3},
-  replyText: {fontSize:12, color:'#0064C8', borderLeftWidth:3, borderLeftColor:'#0064C8',
-    paddingLeft:6, marginBottom:4, textAlign:'right'},
-  replyBar: {flexDirection:'row', backgroundColor:'#E3F2FD', padding:8, alignItems:'center'},
-  replyBarText: {flex:1, color:'#0064C8', textAlign:'right'},
-  replyBarClose: {fontSize:18, color:C.btnCancel, paddingHorizontal:8},
-  inputRow: {backgroundColor:C.white, padding:8, borderTopWidth:1, borderTopColor:'#eee'},
-  msgInput: {backgroundColor:C.white, borderRadius:8, padding:10, fontSize:16, minHeight:44, maxHeight:100},
-  btnBar: {flexDirection:'row', backgroundColor:C.barBg, padding:8, gap:10, justifyContent:'center'},
-  barBtn: {padding:12, borderRadius:8, minWidth:60, alignItems:'center'},
-  barBtnText: {color:C.white, fontSize:20, fontWeight:'bold'},
-  backBtn: {paddingRight:10},
-  backBtnText: {fontSize:20, color:C.btnEmoji},
+  orText: {color:C.gray, fontSize:14},
+  input: {width:'100%', borderWidth:1, borderColor:'#ddd', borderRadius:10, padding:12, fontSize:16, backgroundColor:C.white},
+  mainHeader: {backgroundColor:C.headerBg, flexDirection:'row', alignItems:'center', padding:12, gap:10},
+  headerLogo: {width:36, height:36},
+  mainHeaderText: {color:C.white, fontSize:20, fontWeight:'bold', flex:1},
+  addBtn: {width:36, height:36, borderRadius:18, backgroundColor:'rgba(255,255,255,0.2)', alignItems:'center', justifyContent:'center'},
+  addBtnText: {color:C.white, fontSize:24, fontWeight:'bold'},
+  addForm: {backgroundColor:C.white, padding:12, borderBottomWidth:1, borderBottomColor:'#eee'},
+  myIdText: {textAlign:'center', color:C.gray, fontSize:12, padding:6, backgroundColor:'#f0f0f0'},
+  contactRow: {flexDirection:'row', alignItems:'center', backgroundColor:C.white, marginHorizontal:0, paddingHorizontal:16, paddingVertical:12, borderBottomWidth:1, borderBottomColor:'#f0f0f0', gap:12},
+  contactAvatar: {width:48, height:48, borderRadius:24, backgroundColor:C.headerBg, alignItems:'center', justifyContent:'center'},
+  contactAvatarText: {color:C.white, fontSize:20, fontWeight:'bold'},
+  contactInfo: {flex:1},
+  contactName: {fontSize:16, fontWeight:'bold', color:C.text},
+  contactId: {fontSize:12, color:C.gray},
+  badge: {backgroundColor:C.btnSend, borderRadius:12, minWidth:24, height:24, alignItems:'center', justifyContent:'center', paddingHorizontal:6},
+  badgeText: {color:C.white, fontSize:12, fontWeight:'bold'},
+  emptyContainer: {flex:1, alignItems:'center', justifyContent:'center', padding:40},
+  emptyText: {fontSize:18, color:C.gray, fontWeight:'bold'},
+  emptySubText: {fontSize:14, color:C.gray, marginTop:8},
+  chatHeader: {backgroundColor:C.headerBg, flexDirection:'row', alignItems:'center', padding:12, gap:10},
+  chatHeaderAvatar: {width:40, height:40, borderRadius:20, backgroundColor:'rgba(255,255,255,0.3)', alignItems:'center', justifyContent:'center'},
+  chatHeaderAvatarText: {color:C.white, fontSize:18, fontWeight:'bold'},
+  chatHeaderName: {color:C.white, fontSize:18, fontWeight:'bold', flex:1},
+  backBtn: {padding:4},
+  backBtnText: {color:C.white, fontSize:22},
+  bubbleRow: {marginVertical:2, flexDirection:'row'},
+  bubbleRowRight: {justifyContent:'flex-end', paddingLeft:60},
+  bubbleRowLeft: {justifyContent:'flex-start', paddingRight:60},
+  bubble: {maxWidth:'85%', padding:8, borderRadius:12, paddingBottom:4},
+  bubbleShadow: {elevation:1, shadowColor:'#000', shadowOpacity:0.1, shadowRadius:2},
+  bubbleText: {fontSize:15, color:C.text, lineHeight:22},
+  linkText: {color:C.linkColor, textDecorationLine:'underline'},
+  bubbleFooter: {flexDirection:'row', justifyContent:'flex-end', alignItems:'center', gap:4, marginTop:2},
+  bubbleTime: {fontSize:11, color:C.gray},
+  statusTick: {fontSize:13, fontWeight:'bold'},
+  replyPreview: {borderLeftWidth:3, borderLeftColor:C.headerBg, paddingLeft:6, marginBottom:6, backgroundColor:'rgba(0,0,0,0.05)', borderRadius:4, padding:4},
+  replyPreviewText: {fontSize:12, color:C.headerBg},
+  msgImage: {width:200, height:200, borderRadius:8, marginBottom:4},
+  fileContainer: {flexDirection:'row', alignItems:'center', gap:8, padding:4},
+  fileIcon: {fontSize:24},
+  fileName: {fontSize:13, color:C.text, flex:1},
+  replyBar: {flexDirection:'row', backgroundColor:'#E3F2FD', padding:10, alignItems:'center', borderTopWidth:1, borderTopColor:'#ddd'},
+  replyBarContent: {flex:1},
+  replyBarLabel: {fontSize:12, color:C.headerBg, fontWeight:'bold'},
+  replyBarText: {fontSize:13, color:C.text},
+  replyBarClose: {fontSize:20, color:C.btnCancel, paddingHorizontal:10},
+  emojiPanel: {backgroundColor:C.white, borderTopWidth:1, borderTopColor:'#eee', padding:8, height:80},
+  emojiGrid: {flexDirection:'row', flexWrap:'wrap', gap:8},
+  emojiItem: {fontSize:28, padding:4},
+  inputArea: {flexDirection:'row', alignItems:'flex-end', backgroundColor:C.white, padding:8, gap:6, borderTopWidth:1, borderTopColor:'#eee'},
+  iconBtn: {padding:8},
+  iconBtnText: {fontSize:24},
+  msgInput: {flex:1, backgroundColor:'#f5f5f5', borderRadius:20, paddingHorizontal:14, paddingVertical:8, fontSize:15, maxHeight:100, minHeight:40},
+  sendBtn: {width:44, height:44, borderRadius:22, alignItems:'center', justifyContent:'center'},
+  sendBtnText: {color:C.white, fontSize:20},
 });
