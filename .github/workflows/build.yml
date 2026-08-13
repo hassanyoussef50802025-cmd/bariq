@@ -30,9 +30,7 @@ jobs:
         run: |
           npx @react-native-community/cli@12 init BariqApp --version 0.73.0 --skip-install --npm
           cp App.js BariqApp/App.js
-          cp Amiri-Regular.ttf BariqApp/android/app/src/main/assets/Amiri-Regular.ttf 2>/dev/null || true
-          mkdir -p BariqApp/android/app/src/main/res/drawable
-          cp logo.png BariqApp/android/app/src/main/res/drawable/logo.png 2>/dev/null || true
+          cp logo.png BariqApp/logo.png 2>/dev/null || true
 
       - name: Install dependencies
         run: |
@@ -40,9 +38,7 @@ jobs:
           npm install
           npm install @react-native-async-storage/async-storage@1.21.0
           npm install react-native-image-picker@7.1.0
-          npm install react-native-notifee@7.8.0
-          npm install react-native-video@6.3.3
-          npm install react-native-sound@0.11.2
+          npm install @notifee/react-native@7.8.2
 
       - name: Build APK
         run: |
