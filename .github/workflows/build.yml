@@ -33,13 +33,11 @@ jobs:
           cp BackgroundService.js BariqApp/BackgroundService.js
           cp index.js BariqApp/index.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
-          # أيقونة التطبيق
           convert logo.png -resize 72x72 BariqApp/android/app/src/main/res/mipmap-hdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 48x48 BariqApp/android/app/src/main/res/mipmap-mdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 96x96 BariqApp/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 144x144 BariqApp/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 192x192 BariqApp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png 2>/dev/null || true
-          # إضافة ملف Java لخدمة الخلفية
           mkdir -p BariqApp/android/app/src/main/java/com/bariqapp
           cat > BariqApp/android/app/src/main/java/com/bariqapp/BariqBackgroundService.java << 'JAVA'
           package com.bariqapp;
@@ -47,8 +45,6 @@ jobs:
           import android.os.Bundle;
           import com.facebook.react.HeadlessJsTaskService;
           import com.facebook.react.bridge.Arguments;
-          import com.facebook.react.javamodules.ReactModuleInfo;
-          import com.facebook.react.javamodules.ReactModuleInfoProvider;
           import com.facebook.react.jstasks.HeadlessJsTaskConfig;
           import javax.annotation.Nullable;
           public class BariqBackgroundService extends HeadlessJsTaskService {
@@ -64,9 +60,7 @@ jobs:
             }
           }
           JAVA
-          # تسجيل الخدمة في AndroidManifest
           sed -i 's|</application>|<service android:name=".BariqBackgroundService" android:exported="false" />\n    </application>|' BariqApp/android/app/src/main/AndroidManifest.xml
-          # إضافة صلاحية الإشعارات
           sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />|' BariqApp/android/app/src/main/AndroidManifest.xml
 
       - name: Install dependencies
