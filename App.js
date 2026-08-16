@@ -3,11 +3,11 @@ import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, Alert, ScrollView, KeyboardAvoidingView,
   Platform, I18nManager, ActivityIndicator, SafeAreaView,
-  Image, Linking, AppState, NativeModules,
+  Image, Linking, AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from 'react-native-image-picker';
-import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 
 I18nManager.forceRTL(true);
 
@@ -57,7 +57,7 @@ const isVideoFile = (name) => /\.(mp4|mkv|avi|mov|webm|3gp)$/i.test(name || '');
 const getMimeType = (filename) => {
   if (!filename) return 'image/jpeg';
   const ext = filename.split('.').pop().toLowerCase();
-  const types = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+  const types = {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp'};
   return types[ext] || 'image/jpeg';
 };
 
@@ -108,11 +108,9 @@ const getMsgStatus = async (uid, key) => {
   } catch { return ''; }
 };
 
-// ==================== إعداد الإشعارات ====================
-let notificationChannelCreated = false;
-
+let channelCreated = false;
 const setupNotifications = async () => {
-  if (notificationChannelCreated) return;
+  if (channelCreated) return;
   try {
     await notifee.requestPermission();
     await notifee.createChannel({
@@ -122,29 +120,27 @@ const setupNotifications = async () => {
       sound: 'default',
       vibration: true,
     });
-    notificationChannelCreated = true;
-  } catch(e) { console.log('notification setup error:', e); }
+    channelCreated = true;
+  } catch {}
 };
 
-const showNotification = async (title, body, myId) => {
+const showNotification = async (title, body) => {
   try {
     await notifee.displayNotification({
-      title: `<b>${title}</b>`,
+      title,
       body,
       android: {
         channelId: 'bariq_messages',
         importance: AndroidImportance.HIGH,
-        sound: 'default',
-        vibrationPattern: [300, 500],
         smallIcon: 'ic_launcher',
-        pressAction: { id: 'default' },
+        pressAction: {id: 'default'},
       },
     });
-  } catch(e) { console.log('show notification error:', e); }
+  } catch {}
 };
 
 // ==================== شاشة الترحيب ====================
-const WelcomeScreen = ({ onLogin }) => {
+const WelcomeScreen = ({onLogin}) => {
   const [inputId, setInputId] = useState('');
 
   const createAccount = async () => {
@@ -157,11 +153,12 @@ const WelcomeScreen = ({ onLogin }) => {
   };
 
   const login = async () => {
-    if (inputId.length === 8 && /^\d+$/.test(inputId)) {
-      await AsyncStorage.setItem('my_id', inputId);
+    const trimmed = inputId.trim();
+    if (trimmed.length === 8 && /^\d+$/.test(trimmed)) {
+      await AsyncStorage.setItem('my_id', trimmed);
       const contacts = await AsyncStorage.getItem('contacts');
       if (!contacts) await AsyncStorage.setItem('contacts', JSON.stringify({}));
-      onLogin(inputId);
+      onLogin(trimmed);
     } else {
       Alert.alert('خطأ', 'الرقم يجب أن يكون 8 أرقام');
     }
@@ -197,7 +194,7 @@ const WelcomeScreen = ({ onLogin }) => {
 };
 
 // ==================== شاشة الرئيسية ====================
-const HomeScreen = ({ myId, onOpenChat }) => {
+const HomeScreen = ({myId, onOpenChat}) => {
   const [contacts, setContacts] = useState({});
   const [contactNames, setContactNames] = useState({});
   const [newContact, setNewContact] = useState('');
@@ -225,18 +222,14 @@ const HomeScreen = ({ myId, onOpenChat }) => {
     const c = await AsyncStorage.getItem('contacts');
     const n = await AsyncStorage.getItem('contact_names');
     const p = await AsyncStorage.getItem('pending');
+    const seen = await AsyncStorage.getItem('seen_keys');
     setContacts(c ? JSON.parse(c) : {});
     setContactNames(n ? JSON.parse(n) : {});
     setPending(p ? JSON.parse(p) : {});
+    if (seen) JSON.parse(seen).forEach(k => seenKeysRef.current.add(k));
   };
 
-  const startListener = async () => {
-    // تحميل المفاتيح المرئية سابقاً
-    const savedSeen = await AsyncStorage.getItem('seen_keys');
-    if (savedSeen) {
-      JSON.parse(savedSeen).forEach(k => seenKeysRef.current.add(k));
-    }
-
+  const startListener = () => {
     listenerRef.current = setInterval(async () => {
       try {
         const incoming = await fbGet(myId);
@@ -253,32 +246,27 @@ const HomeScreen = ({ myId, onOpenChat }) => {
             if (!allP[sid]) allP[sid] = [];
             allP[sid].push({key, msg});
             changed = true;
-
-            // إرسال الإشعار دائماً (سواء كان التطبيق في الخلفية أو مفتوحاً)
             const senderName = names[sid] || `رقم ${sid}`;
-            const body = msg.type === 'file'
-              ? `📎 ${msg.filename || 'ملف'}`
-              : (msg.text || '');
-            await showNotification(`رسالة من ${senderName}`, body, myId);
+            const body = msg.type === 'file' ? `📎 ${msg.filename || 'ملف'}` : (msg.text || '');
+            await showNotification(`رسالة من ${senderName}`, body);
           }
         }
-
         if (changed) {
           await AsyncStorage.setItem('pending', JSON.stringify(allP));
-          // حفظ المفاتيح المرئية
           await AsyncStorage.setItem('seen_keys', JSON.stringify([...seenKeysRef.current].slice(-500)));
           setPending({...allP});
         }
-      } catch(e) { console.log('listener error:', e); }
+      } catch {}
     }, 15000);
   };
 
   const addContact = async () => {
-    if (newContact.length === 8 && /^\d+$/.test(newContact)) {
-      if (newContact === myId) { Alert.alert('تنبيه', 'لا يمكنك إضافة رقمك الخاص'); return; }
-      const name = newName.trim() || newContact;
-      const updatedC = {...contacts, [newContact]: newContact};
-      const updatedN = {...contactNames, [newContact]: name};
+    const cid = newContact.trim();
+    if (cid.length === 8 && /^\d+$/.test(cid)) {
+      if (cid === myId) { Alert.alert('تنبيه', 'لا يمكنك إضافة رقمك الخاص'); return; }
+      const name = newName.trim() || cid;
+      const updatedC = {...contacts, [cid]: cid};
+      const updatedN = {...contactNames, [cid]: name};
       setContacts(updatedC);
       setContactNames(updatedN);
       await AsyncStorage.setItem('contacts', JSON.stringify(updatedC));
@@ -316,8 +304,6 @@ const HomeScreen = ({ myId, onOpenChat }) => {
     const name = contactNames[cid] || cid;
     onOpenChat(cid, name, p);
   };
-
-  const allContacts = Object.entries(contacts);
 
   return (
     <SafeAreaView style={[styles.flex1, {backgroundColor: C.bg}]}>
@@ -361,7 +347,7 @@ const HomeScreen = ({ myId, onOpenChat }) => {
       <Text style={styles.myIdText}>رقمك: {myId}</Text>
 
       <FlatList
-        data={allContacts}
+        data={Object.entries(contacts)}
         keyExtractor={([cid]) => cid}
         renderItem={({item: [cid]}) => {
           const pCount = (pending[cid] || []).length;
@@ -395,7 +381,7 @@ const HomeScreen = ({ myId, onOpenChat }) => {
 };
 
 // ==================== شاشة المحادثة ====================
-const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
+const ChatScreen = ({myId, contactId, contactName, pendingMsgs, onBack}) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState(null);
@@ -405,7 +391,6 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   const seenKeys = useRef(new Set());
   const listenerRef = useRef(null);
   const msgsRef = useRef([]);
-  const inputRef = useRef(null);
 
   useEffect(() => {
     loadMessages();
@@ -469,47 +454,51 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
 
   const startPolling = () => {
     listenerRef.current = setInterval(async () => {
-      const incoming = await fbGet(myId);
-      for (const [k, msg] of Object.entries(incoming)) {
-        if (!seenKeys.current.has(k) && msg && typeof msg === 'object') {
-          if (msg.from === contactId) {
-            seenKeys.current.add(k);
-            const current = msgsRef.current;
-            await processIncoming(k, msg, current);
+      try {
+        const incoming = await fbGet(myId);
+        for (const [k, msg] of Object.entries(incoming)) {
+          if (!seenKeys.current.has(k) && msg && typeof msg === 'object') {
+            if (msg.from === contactId) {
+              seenKeys.current.add(k);
+              await processIncoming(k, msg, msgsRef.current);
+            }
           }
         }
-      }
-      const current = [...msgsRef.current];
-      let updated = false;
-      for (let i = 0; i < current.length; i++) {
-        const m = current[i];
-        if (m.from === myId && m.key && m.deliveryStatus !== 'read') {
-          const ns = await getMsgStatus(myId, m.key);
-          const order = {sent:0, received:1, read:2};
-          if (ns && (order[ns]||0) > (order[m.deliveryStatus||'sent']||0)) {
-            current[i] = {...m, deliveryStatus: ns};
-            updated = true;
+        const current = [...msgsRef.current];
+        let updated = false;
+        for (let i = 0; i < current.length; i++) {
+          const m = current[i];
+          if (m.from === myId && m.key && m.deliveryStatus !== 'read') {
+            const ns = await getMsgStatus(myId, m.key);
+            const order = {sent:0, received:1, read:2};
+            if (ns && (order[ns]||0) > (order[m.deliveryStatus||'sent']||0)) {
+              current[i] = {...m, deliveryStatus: ns};
+              updated = true;
+            }
           }
         }
-      }
-      if (updated) {
-        msgsRef.current = current;
-        setMessages([...current]);
-        await saveMessages(current);
-      }
+        if (updated) {
+          msgsRef.current = current;
+          setMessages([...current]);
+          await saveMessages(current);
+        }
+      } catch {}
     }, 15000);
   };
 
   const sendMessage = async () => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || sending) return;
     setSending(true);
     const now = Math.floor(Date.now()/1000);
-    const payload = {from: myId, text: trimmed, type: 'text', time: now, delivery_status: 'sent'};
-    if (replyTo) payload.reply_to = replyTo.text || String(replyTo);
+    const payload = {
+      from: myId, text: trimmed, type: 'text',
+      time: now, delivery_status: 'sent',
+      ...(replyTo ? {reply_to: replyTo.text || String(replyTo)} : {})
+    };
     const lm = {
-      from: myId, text: trimmed, type: 'text', time: now,
-      deliveryStatus: 'sent', key: '',
+      from: myId, text: trimmed, type: 'text',
+      time: now, deliveryStatus: 'sent', key: '',
       replyTo: replyTo ? (replyTo.text || String(replyTo)) : null
     };
     const updated = [...msgsRef.current, lm];
@@ -522,7 +511,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
     const key = await fbSend(contactId, payload);
     if (key) {
       const newMsgs = [...msgsRef.current];
-      const idx = newMsgs.findIndex(m => m === lm || (m.time === lm.time && m.text === lm.text && !m.key));
+      const idx = newMsgs.findLastIndex(m => m.text === trimmed && !m.key);
       if (idx >= 0) {
         newMsgs[idx] = {...newMsgs[idx], key};
         msgsRef.current = newMsgs;
@@ -536,25 +525,15 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   const pickImage = async () => {
     try {
       const result = await launchImageLibrary({
-        mediaType: 'mixed',
-        includeBase64: true,
-        quality: 0.7,
+        mediaType: 'mixed', includeBase64: true, quality: 0.7,
       });
       if (result.assets && result.assets[0]) {
         const asset = result.assets[0];
         const filename = asset.fileName || `image_${Date.now()}.jpg`;
         const mimeType = asset.type || getMimeType(filename);
         const now = Math.floor(Date.now()/1000);
-        const payload = {
-          from: myId, type: 'file', filename,
-          fileData: asset.base64, mimeType,
-          time: now, delivery_status: 'sent'
-        };
-        const lm = {
-          from: myId, type: 'file', filename,
-          fileData: asset.base64, mimeType,
-          time: now, deliveryStatus: 'sent', key: ''
-        };
+        const payload = {from: myId, type: 'file', filename, fileData: asset.base64, mimeType, time: now, delivery_status: 'sent'};
+        const lm = {from: myId, type: 'file', filename, fileData: asset.base64, mimeType, time: now, deliveryStatus: 'sent', key: ''};
         const updated = [...msgsRef.current, lm];
         msgsRef.current = updated;
         setMessages([...updated]);
@@ -571,7 +550,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
           }
         }
       }
-    } catch (e) { Alert.alert('خطأ', 'تعذر اختيار الملف'); }
+    } catch { Alert.alert('خطأ', 'تعذر اختيار الملف'); }
   };
 
   const showOptions = (idx) => {
@@ -581,17 +560,13 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
       {text: 'نسخ', onPress: () => Alert.alert('تم النسخ', msg.text || msg.filename)},
       {text: 'إلغاء', style: 'cancel'},
     ];
-    if (msg.from === myId) {
-      opts.splice(2, 0, {text: 'حذف', style: 'destructive', onPress: () => deleteMsg(idx)});
-    }
+    if (msg.from === myId) opts.splice(2, 0, {text: 'حذف', style: 'destructive', onPress: async () => {
+      const updated = messages.filter((_, i) => i !== idx);
+      msgsRef.current = updated;
+      setMessages(updated);
+      await saveMessages(updated);
+    }});
     Alert.alert('خيارات الرسالة', '', opts);
-  };
-
-  const deleteMsg = async (idx) => {
-    const updated = messages.filter((_, i) => i !== idx);
-    msgsRef.current = updated;
-    setMessages(updated);
-    await saveMessages(updated);
   };
 
   const renderTextWithLinks = (txt) => {
@@ -626,28 +601,16 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
               </View>
             )}
             {item.type === 'file' && isImg && item.fileData ? (
-              <Image
-                source={{uri: `data:${mime};base64,${item.fileData}`}}
-                style={styles.msgImage}
-                resizeMode="cover"
-              />
+              <Image source={{uri: `data:${mime};base64,${item.fileData}`}} style={styles.msgImage} resizeMode="cover"/>
             ) : item.type === 'file' ? (
               <View style={styles.fileContainer}>
-                <Text style={styles.fileIcon}>
-                  {isAudioFile(item.filename) ? '🎵' : isVideoFile(item.filename) ? '🎬' : '📎'}
-                </Text>
+                <Text style={styles.fileIcon}>{isAudioFile(item.filename) ? '🎵' : isVideoFile(item.filename) ? '🎬' : '📎'}</Text>
                 <Text style={styles.fileName}>{item.filename}</Text>
               </View>
-            ) : (
-              renderTextWithLinks(item.text)
-            )}
+            ) : renderTextWithLinks(item.text)}
             <View style={styles.bubbleFooter}>
               <Text style={styles.bubbleTime}>{time}</Text>
-              {isMine && (
-                <Text style={[styles.statusTick, {color: statusColor(item.deliveryStatus)}]}>
-                  {statusLabel(item.deliveryStatus)}
-                </Text>
-              )}
+              {isMine && <Text style={[styles.statusTick, {color: statusColor(item.deliveryStatus)}]}>{statusLabel(item.deliveryStatus)}</Text>}
             </View>
           </View>
         </View>
@@ -680,9 +643,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
         <View style={styles.replyBar}>
           <View style={styles.replyBarContent}>
             <Text style={styles.replyBarLabel}>رد على:</Text>
-            <Text style={styles.replyBarText} numberOfLines={1}>
-              {String(replyTo.text || replyTo.filename || '').slice(0,50)}
-            </Text>
+            <Text style={styles.replyBarText} numberOfLines={1}>{String(replyTo.text || replyTo.filename || '').slice(0,50)}</Text>
           </View>
           <TouchableOpacity onPress={() => setReplyTo(null)}>
             <Text style={styles.replyBarClose}>✕</Text>
@@ -710,16 +671,12 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
             <Text style={styles.iconBtnText}>😊</Text>
           </TouchableOpacity>
           <TextInput
-            ref={inputRef}
             style={styles.msgInput}
             placeholder="اكتب رسالتك..."
             value={text}
             onChangeText={setText}
-            multiline={false}
+            multiline={true}
             textAlign="right"
-            returnKeyType="send"
-            onSubmitEditing={sendMessage}
-            blurOnSubmit={false}
           />
           <TouchableOpacity onPress={pickImage} style={styles.iconBtn}>
             <Text style={styles.iconBtnText}>📎</Text>
@@ -729,10 +686,7 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
             onPress={sendMessage}
             disabled={sending}
           >
-            {sending
-              ? <ActivityIndicator color="#fff" size="small"/>
-              : <Text style={styles.sendBtnText}>➤</Text>
-            }
+            {sending ? <ActivityIndicator color="#fff" size="small"/> : <Text style={styles.sendBtnText}>➤</Text>}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -740,7 +694,6 @@ const ChatScreen = ({ myId, contactId, contactName, pendingMsgs, onBack }) => {
   );
 };
 
-// ==================== التطبيق الرئيسي ====================
 export default function App() {
   const [myId, setMyId] = useState(null);
   const [screen, setScreen] = useState('loading');
@@ -754,26 +707,11 @@ export default function App() {
   }, []);
 
   const handleLogin = (id) => { setMyId(id); setScreen('home'); };
-  const openChat = (cid, cname, pendingMsgs) => {
-    setChatInfo({cid, cname, pendingMsgs});
-    setScreen('chat');
-  };
+  const openChat = (cid, cname, pendingMsgs) => { setChatInfo({cid, cname, pendingMsgs}); setScreen('chat'); };
 
-  if (screen === 'loading') return (
-    <View style={[styles.flex1, styles.center]}>
-      <ActivityIndicator size="large" color={C.headerBg}/>
-    </View>
-  );
+  if (screen === 'loading') return <View style={[styles.flex1, styles.center]}><ActivityIndicator size="large" color={C.headerBg}/></View>;
   if (screen === 'welcome') return <WelcomeScreen onLogin={handleLogin}/>;
-  if (screen === 'chat' && chatInfo) return (
-    <ChatScreen
-      myId={myId}
-      contactId={chatInfo.cid}
-      contactName={chatInfo.cname}
-      pendingMsgs={chatInfo.pendingMsgs}
-      onBack={() => setScreen('home')}
-    />
-  );
+  if (screen === 'chat' && chatInfo) return <ChatScreen myId={myId} contactId={chatInfo.cid} contactName={chatInfo.cname} pendingMsgs={chatInfo.pendingMsgs} onBack={() => setScreen('home')}/>;
   return <HomeScreen myId={myId} onOpenChat={openChat}/>;
 }
 
@@ -836,10 +774,10 @@ const styles = StyleSheet.create({
   emojiPanel: {backgroundColor:C.white, borderTopWidth:1, borderTopColor:'#eee', padding:8, height:80},
   emojiGrid: {flexDirection:'row', flexWrap:'wrap', gap:8},
   emojiItem: {fontSize:28, padding:4},
-  inputArea: {flexDirection:'row', alignItems:'center', backgroundColor:C.white, padding:8, gap:6, borderTopWidth:1, borderTopColor:'#eee'},
+  inputArea: {flexDirection:'row', alignItems:'flex-end', backgroundColor:C.white, padding:8, gap:6, borderTopWidth:1, borderTopColor:'#eee'},
   iconBtn: {padding:8},
   iconBtnText: {fontSize:24},
-  msgInput: {flex:1, backgroundColor:'#f5f5f5', borderRadius:20, paddingHorizontal:14, paddingVertical:8, fontSize:15, height:44},
+  msgInput: {flex:1, backgroundColor:'#f5f5f5', borderRadius:20, paddingHorizontal:14, paddingVertical:8, fontSize:15, maxHeight:120, minHeight:44},
   sendBtn: {width:44, height:44, borderRadius:22, alignItems:'center', justifyContent:'center'},
   sendBtnText: {color:C.white, fontSize:20},
 });
