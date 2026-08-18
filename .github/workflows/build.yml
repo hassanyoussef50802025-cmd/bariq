@@ -33,6 +33,9 @@ jobs:
           cp BackgroundService.js BariqApp/BackgroundService.js
           cp index.js BariqApp/index.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
+          cp Amiri-Regular.ttf BariqApp/Amiri-Regular.ttf 2>/dev/null || true
+          mkdir -p BariqApp/android/app/src/main/assets
+          cp Amiri-Regular.ttf BariqApp/android/app/src/main/assets/Amiri-Regular.ttf 2>/dev/null || true
           convert logo.png -resize 72x72 BariqApp/android/app/src/main/res/mipmap-hdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 48x48 BariqApp/android/app/src/main/res/mipmap-mdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 96x96 BariqApp/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png 2>/dev/null || true
