@@ -41,30 +41,7 @@ jobs:
           convert logo.png -resize 96x96 BariqApp/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 144x144 BariqApp/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 192x192 BariqApp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png 2>/dev/null || true
-          mkdir -p BariqApp/android/app/src/main/java/com/bariqapp
-          cat > BariqApp/android/app/src/main/java/com/bariqapp/BariqBackgroundService.java << 'JAVA'
-          package com.bariqapp;
-          import android.content.Intent;
-          import android.os.Bundle;
-          import com.facebook.react.HeadlessJsTaskService;
-          import com.facebook.react.bridge.Arguments;
-          import com.facebook.react.jstasks.HeadlessJsTaskConfig;
-          import javax.annotation.Nullable;
-          public class BariqBackgroundService extends HeadlessJsTaskService {
-            @Override
-            protected @Nullable HeadlessJsTaskConfig getTaskConfig(Intent intent) {
-              Bundle extras = intent.getExtras();
-              return new HeadlessJsTaskConfig(
-                "BariqBackgroundTask",
-                extras != null ? Arguments.fromBundle(extras) : Arguments.createMap(),
-                5000,
-                true
-              );
-            }
-          }
-          JAVA
-          sed -i 's|</application>|<service android:name=".BariqBackgroundService" android:exported="false" />\n    </application>|' BariqApp/android/app/src/main/AndroidManifest.xml
-          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />|' BariqApp/android/app/src/main/AndroidManifest.xml
+          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />|' BariqApp/android/app/src/main/AndroidManifest.xml
 
       - name: Install dependencies
         run: |
@@ -73,6 +50,7 @@ jobs:
           npm install @react-native-async-storage/async-storage@1.21.0
           npm install react-native-image-picker@7.1.0
           npm install @notifee/react-native@7.8.2
+          npm install react-native-background-actions@3.1.1
 
       - name: Build APK
         run: |
