@@ -8,36 +8,19 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from 'react-native-image-picker';
 import notifee, { AndroidImportance } from '@notifee/react-native';
-import { Text as RNText } from 'react-native';
+import BackgroundService from 'react-native-background-actions';
 
 I18nManager.forceRTL(true);
 
 const FIREBASE_URL = "https://bariq-ce6b4-default-rtdb.firebaseio.com";
 const FIREBASE_KEY = "AIzaSyDhEo61jzd-npwhhw-Vf1R8fLWttJbJib8";
-const ADMIN_ID = "53710624";
-
-// ==================== تسجيل الخط ====================
-import { Platform as RNPlatform } from 'react-native';
-let FONT = 'System';
-try {
-  const { default: RNFontLoader } = require('react-native-asset');
-} catch {}
-
-// نستخدم الخط مباشرة
 const FONT_FAMILY = Platform.OS === 'android' ? 'Amiri-Regular' : 'System';
 
 const C = {
-  bg: '#F0F4FF',
-  myMsg: '#DCF8C6',
-  otherMsg: '#FFFFFF',
-  headerBg: '#1565C0',
-  btnSend: '#4CAF50',
-  btnEmoji: '#2196F3',
-  btnCancel: '#F44336',
-  text: '#191919',
-  white: '#FFFFFF',
-  gray: '#999',
-  linkColor: '#1565C0',
+  bg: '#F0F4FF', myMsg: '#DCF8C6', otherMsg: '#FFFFFF',
+  headerBg: '#1565C0', btnSend: '#4CAF50', btnEmoji: '#2196F3',
+  btnCancel: '#F44336', text: '#191919', white: '#FFFFFF',
+  gray: '#999', linkColor: '#1565C0',
 };
 
 const EMOJIS = ['😀','😂','😍','😢','😮','😎','❤️','👍','👎','🙏','🎉','🔥','✅','❌','⭐','😊','😴','🤔','🌹','💪','😅','🤣','😇','🥰','😘','😜','🤩','😭','😱','🤯','💯','🎊','🎈','🌟','💫','⚡','🌈','🎯','🙌'];
@@ -49,7 +32,7 @@ const statusColor = (s) => s==='read'?'#4FC3F7':'#999';
 const isImageFile = (name) => /\.(jpg|jpeg|png|gif|webp)$/i.test(name||'');
 const isAudioFile = (name) => /\.(mp3|wav|m4a|aac|ogg)$/i.test(name||'');
 const isVideoFile = (name) => /\.(mp4|mkv|avi|mov|webm|3gp)$/i.test(name||'');
-const getMimeType = (filename) => { if(!filename) return 'image/jpeg'; const ext=filename.split('.').pop().toLowerCase(); return {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp'}[ext]||'image/jpeg'; };
+const getMimeType = (fn) => { if(!fn) return 'image/jpeg'; const ext=fn.split('.').pop().toLowerCase(); return {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp'}[ext]||'image/jpeg'; };
 const extractUrls = (text) => { const r=/(https?:\/\/[^\s]+)/g; return text?text.match(r)||[]:[];};
 
 const fbSend = async (toId, payload) => {
@@ -57,16 +40,14 @@ const fbSend = async (toId, payload) => {
     const r = await fetch(`${FIREBASE_URL}/messages/${toId}.json?auth=${FIREBASE_KEY}`, {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
     });
-    const d = await r.json();
-    return d.name||null;
+    const d = await r.json(); return d.name||null;
   } catch { return null; }
 };
 
 const fbGet = async (uid) => {
   try {
     const r = await fetch(`${FIREBASE_URL}/messages/${uid}.json?auth=${FIREBASE_KEY}`);
-    const d = await r.json();
-    return (d&&typeof d==='object')?d:{};
+    const d = await r.json(); return (d&&typeof d==='object')?d:{};
   } catch { return {}; }
 };
 
@@ -85,17 +66,20 @@ const notifyStatus = async (toId, key, status, fromId) => {
 const getMsgStatus = async (uid, key) => {
   try {
     const r = await fetch(`${FIREBASE_URL}/status/${uid}/${key}.json?auth=${FIREBASE_KEY}`);
-    const d = await r.json();
-    return (d&&d.status)?d.status:'';
+    const d = await r.json(); return (d&&d.status)?d.status:'';
   } catch { return ''; }
 };
 
+// ==================== الإشعارات ====================
 let channelCreated = false;
-const setupNotifications = async () => {
+const setupNotifee = async () => {
   if(channelCreated) return;
   try {
     await notifee.requestPermission();
-    await notifee.createChannel({id:'bariq_messages',name:'رسائل بارق',importance:AndroidImportance.HIGH,sound:'default',vibration:true});
+    await notifee.createChannel({
+      id:'bariq', name:'رسائل بارق',
+      importance:AndroidImportance.HIGH, sound:'default', vibration:true,
+    });
     channelCreated = true;
   } catch {}
 };
@@ -104,7 +88,63 @@ const showNotification = async (title, body) => {
   try {
     await notifee.displayNotification({
       title, body,
-      android:{channelId:'bariq_messages',importance:AndroidImportance.HIGH,smallIcon:'ic_launcher',pressAction:{id:'default'}},
+      android:{channelId:'bariq',importance:AndroidImportance.HIGH,smallIcon:'ic_launcher',pressAction:{id:'default'}},
+    });
+  } catch {}
+};
+
+// ==================== مهمة الخلفية ====================
+const backgroundTask = async (taskData) => {
+  const seenKeys = new Set();
+  try {
+    const savedSeen = await AsyncStorage.getItem('seen_keys_bg');
+    if(savedSeen) JSON.parse(savedSeen).forEach(k => seenKeys.add(k));
+  } catch {}
+
+  await new Promise(async (resolve) => {
+    const interval = setInterval(async () => {
+      if(!BackgroundService.isRunning()) { clearInterval(interval); resolve(); return; }
+      try {
+        const myId = await AsyncStorage.getItem('my_id');
+        if(!myId) return;
+        const names = JSON.parse(await AsyncStorage.getItem('contact_names')||'{}');
+        const incoming = await fbGet(myId);
+        const savedP = JSON.parse(await AsyncStorage.getItem('pending')||'{}');
+        let changed = false;
+
+        for(const [key, msg] of Object.entries(incoming)) {
+          if(!seenKeys.has(key) && msg && typeof msg === 'object') {
+            seenKeys.add(key);
+            const sid = msg.from||'';
+            if(!savedP[sid]) savedP[sid] = [];
+            savedP[sid].push({key, msg});
+            changed = true;
+            const name = names[sid]||`رقم ${sid}`;
+            const body = msg.type==='file' ? `📎 ${msg.filename||'ملف'}` : (msg.text||'');
+            await showNotification(`رسالة من ${name}`, body);
+          }
+        }
+
+        if(changed) {
+          await AsyncStorage.setItem('pending', JSON.stringify(savedP));
+          await AsyncStorage.setItem('seen_keys_bg', JSON.stringify([...seenKeys].slice(-500)));
+        }
+      } catch {}
+    }, 15000);
+  });
+};
+
+const startBackgroundService = async () => {
+  try {
+    if(BackgroundService.isRunning()) return;
+    await setupNotifee();
+    await BackgroundService.start(backgroundTask, {
+      taskName: 'بارق',
+      taskTitle: 'بارق يعمل في الخلفية',
+      taskDesc: 'جاري فحص الرسائل الجديدة...',
+      taskIcon: {name:'ic_launcher', type:'mipmap'},
+      color: '#1565C0',
+      parameters: {},
     });
   } catch {}
 };
@@ -122,12 +162,11 @@ const WelcomeScreen = ({onLogin}) => {
 
   const login = async () => {
     const trimmed = inputId.trim();
-    if(trimmed.length===8&&/^\d+$/.test(trimmed)) {
-      await AsyncStorage.setItem('my_id',trimmed);
-      const contacts = await AsyncStorage.getItem('contacts');
-      if(!contacts) await AsyncStorage.setItem('contacts',JSON.stringify({}));
+    if(trimmed.length===8 && /^\d+$/.test(trimmed)) {
+      await AsyncStorage.setItem('my_id', trimmed);
+      if(!await AsyncStorage.getItem('contacts')) await AsyncStorage.setItem('contacts', JSON.stringify({}));
       onLogin(trimmed);
-    } else { Alert.alert('خطأ','الرقم يجب أن يكون 8 أرقام'); }
+    } else Alert.alert('خطأ', 'الرقم يجب أن يكون 8 أرقام');
   };
 
   return (
@@ -163,9 +202,9 @@ const HomeScreen = ({myId, onOpenChat}) => {
   const seenKeysRef = useRef(new Set());
 
   useEffect(() => {
-    setupNotifications();
     loadContacts();
-    startListener();
+    startBackgroundService();
+    startForegroundListener();
     return () => { if(listenerRef.current) clearInterval(listenerRef.current); };
   }, []);
 
@@ -173,46 +212,25 @@ const HomeScreen = ({myId, onOpenChat}) => {
     const c = await AsyncStorage.getItem('contacts');
     const n = await AsyncStorage.getItem('contact_names');
     const p = await AsyncStorage.getItem('pending');
-    const seen = await AsyncStorage.getItem('seen_keys');
+    const seen = await AsyncStorage.getItem('seen_keys_bg');
     setContacts(c?JSON.parse(c):{});
     setContactNames(n?JSON.parse(n):{});
     setPending(p?JSON.parse(p):{});
     if(seen) JSON.parse(seen).forEach(k=>seenKeysRef.current.add(k));
   };
 
-  const startListener = () => {
+  const startForegroundListener = () => {
     listenerRef.current = setInterval(async () => {
       try {
-        const incoming = await fbGet(myId);
-        let changed = false;
-        const savedP = await AsyncStorage.getItem('pending');
-        const allP = savedP?JSON.parse(savedP):{};
-        const savedNames = await AsyncStorage.getItem('contact_names');
-        const names = savedNames?JSON.parse(savedNames):{};
-        for(const [key,msg] of Object.entries(incoming)) {
-          if(!seenKeysRef.current.has(key)&&msg&&typeof msg==='object') {
-            seenKeysRef.current.add(key);
-            const sid = msg.from||'';
-            if(!allP[sid]) allP[sid]=[];
-            allP[sid].push({key,msg});
-            changed = true;
-            const senderName = names[sid]||`رقم ${sid}`;
-            const body = msg.type==='file'?`📎 ${msg.filename||'ملف'}`:(msg.text||'');
-            await showNotification(`رسالة من ${senderName}`,body);
-          }
-        }
-        if(changed) {
-          await AsyncStorage.setItem('pending',JSON.stringify(allP));
-          await AsyncStorage.setItem('seen_keys',JSON.stringify([...seenKeysRef.current].slice(-500)));
-          setPending({...allP});
-        }
+        const p = await AsyncStorage.getItem('pending');
+        if(p) setPending(JSON.parse(p));
       } catch {}
-    }, 15000);
+    }, 5000);
   };
 
   const addContact = async () => {
     const cid = newContact.trim();
-    if(cid.length===8&&/^\d+$/.test(cid)) {
+    if(cid.length===8 && /^\d+$/.test(cid)) {
       if(cid===myId){Alert.alert('تنبيه','لا يمكنك إضافة رقمك الخاص');return;}
       const name = newName.trim()||cid;
       const updatedC = {...contacts,[cid]:cid};
@@ -221,7 +239,7 @@ const HomeScreen = ({myId, onOpenChat}) => {
       await AsyncStorage.setItem('contacts',JSON.stringify(updatedC));
       await AsyncStorage.setItem('contact_names',JSON.stringify(updatedN));
       setNewContact(''); setNewName(''); setShowAddForm(false);
-    } else { Alert.alert('خطأ','الرقم يجب أن يكون 8 أرقام'); }
+    } else Alert.alert('خطأ','الرقم يجب أن يكون 8 أرقام');
   };
 
   const deleteContact = async (cid) => {
@@ -242,7 +260,7 @@ const HomeScreen = ({myId, onOpenChat}) => {
     const newP = {...pending}; delete newP[cid];
     setPending(newP);
     await AsyncStorage.setItem('pending',JSON.stringify(newP));
-    onOpenChat(cid,contactNames[cid]||cid,p);
+    onOpenChat(cid, contactNames[cid]||cid, p);
   };
 
   return (
@@ -571,8 +589,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  flex1:{flex:1},
-  center:{justifyContent:'center',alignItems:'center'},
+  flex1:{flex:1}, center:{justifyContent:'center',alignItems:'center'},
   welcomeContainer:{flexGrow:1,justifyContent:'center',padding:30,alignItems:'center',gap:12},
   logo:{width:120,height:120,marginBottom:10},
   appTitle:{fontSize:42,fontWeight:'bold',color:C.headerBg},
@@ -603,8 +620,7 @@ const styles = StyleSheet.create({
   chatHeaderAvatar:{width:40,height:40,borderRadius:20,backgroundColor:'rgba(255,255,255,0.3)',alignItems:'center',justifyContent:'center'},
   chatHeaderAvatarText:{color:C.white,fontSize:18,fontWeight:'bold'},
   chatHeaderName:{color:C.white,fontSize:18,fontWeight:'bold',flex:1},
-  backBtn:{padding:4},
-  backBtnText:{color:C.white,fontSize:22},
+  backBtn:{padding:4}, backBtnText:{color:C.white,fontSize:22},
   bubbleRow:{marginVertical:2,flexDirection:'row'},
   bubbleRowRight:{justifyContent:'flex-end',paddingLeft:60},
   bubbleRowLeft:{justifyContent:'flex-start',paddingRight:60},
@@ -619,8 +635,7 @@ const styles = StyleSheet.create({
   replyPreviewText:{fontSize:12,color:C.headerBg},
   msgImage:{width:200,height:200,borderRadius:8,marginBottom:4},
   fileContainer:{flexDirection:'row',alignItems:'center',gap:8,padding:4},
-  fileIcon:{fontSize:24},
-  fileName:{fontSize:13,color:C.text,flex:1},
+  fileIcon:{fontSize:24}, fileName:{fontSize:13,color:C.text,flex:1},
   replyBar:{flexDirection:'row',backgroundColor:'#E3F2FD',padding:10,alignItems:'center',borderTopWidth:1,borderTopColor:'#ddd'},
   replyBarContent:{flex:1},
   replyBarLabel:{fontSize:12,color:C.headerBg,fontWeight:'bold'},
@@ -630,8 +645,7 @@ const styles = StyleSheet.create({
   emojiGrid:{flexDirection:'row',flexWrap:'wrap',gap:8},
   emojiItem:{fontSize:28,padding:4},
   inputArea:{flexDirection:'row',alignItems:'flex-end',backgroundColor:C.white,padding:8,gap:6,borderTopWidth:1,borderTopColor:'#eee'},
-  iconBtn:{padding:8},
-  iconBtnText:{fontSize:24},
+  iconBtn:{padding:8}, iconBtnText:{fontSize:24},
   msgInput:{flex:1,backgroundColor:'#f5f5f5',borderRadius:20,paddingHorizontal:14,paddingVertical:8,fontSize:15,maxHeight:120,minHeight:44},
   sendBtn:{width:44,height:44,borderRadius:22,alignItems:'center',justifyContent:'center'},
   sendBtnText:{color:C.white,fontSize:20},
