@@ -50,7 +50,7 @@ jobs:
           npm install @react-native-async-storage/async-storage@1.21.0
           npm install react-native-image-picker@7.1.0
           npm install @notifee/react-native@7.8.2
-          npm install react-native-background-actions@3.1.1
+          npm install react-native-background-actions@3.0.0
 
       - name: Build APK
         run: |
