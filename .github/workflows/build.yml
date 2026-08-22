@@ -26,11 +26,14 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Create Firebase service account file
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/firebase-service-account.json
+
       - name: Create React Native project
         run: |
           npx @react-native-community/cli@12 init BariqApp --version 0.73.0 --skip-install --npm
           cp App.js BariqApp/App.js
-          cp BackgroundService.js BariqApp/BackgroundService.js
           cp index.js BariqApp/index.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
           cp Amiri-Regular.ttf BariqApp/Amiri-Regular.ttf 2>/dev/null || true
@@ -50,7 +53,18 @@ jobs:
           npm install @react-native-async-storage/async-storage@1.21.0
           npm install react-native-image-picker@7.1.0
           npm install @notifee/react-native@7.8.2
-          npm install react-native-background-actions@3.0.0
+          npm install @react-native-firebase/app@18.7.3
+          npm install @react-native-firebase/messaging@18.7.3
+
+      - name: Configure Firebase
+        run: |
+          cd BariqApp/android/app
+          cp /tmp/firebase-service-account.json google-services.json
+          # تعديل build.gradle لإضافة Firebase
+          cd ..
+          echo "apply plugin: 'com.google.gms.google-services'" >> app/build.gradle
+          # تعديل build.gradle الرئيسي
+          sed -i "s|dependencies {|dependencies {\n        classpath 'com.google.gms:google-services:4.4.0'|" build.gradle
 
       - name: Build APK
         run: |
