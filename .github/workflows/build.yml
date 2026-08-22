@@ -26,10 +26,6 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create Firebase service account file
-        run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/firebase-service-account.json
-
       - name: Create React Native project
         run: |
           npx @react-native-community/cli@12 init BariqApp --version 0.73.0 --skip-install --npm
@@ -46,6 +42,36 @@ jobs:
           convert logo.png -resize 192x192 BariqApp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png 2>/dev/null || true
           sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />|' BariqApp/android/app/src/main/AndroidManifest.xml
 
+      - name: Create google-services.json
+        run: |
+          cat > BariqApp/android/app/google-services.json << 'EOF'
+          {
+            "project_info": {
+              "project_id": "bariq-ce6b4",
+              "project_number": "000000000000",
+              "firebase_url": "https://bariq-ce6b4-default-rtdb.firebaseio.com",
+              "storage_bucket": "bariq-ce6b4.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                  "android_client_info": {
+                    "package_name": "org.bariq"
+                  }
+                },
+                "api_key": [{"current_key": "AIzaSyDhEo61jzd-npwhhw-Vf1R8fLWttJbJib8"}],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+
       - name: Install dependencies
         run: |
           cd BariqApp
@@ -56,15 +82,12 @@ jobs:
           npm install @react-native-firebase/app@18.7.3
           npm install @react-native-firebase/messaging@18.7.3
 
-      - name: Configure Firebase
+      - name: Configure Firebase gradle
         run: |
-          cd BariqApp/android/app
-          cp /tmp/firebase-service-account.json google-services.json
-          # تعديل build.gradle لإضافة Firebase
-          cd ..
-          echo "apply plugin: 'com.google.gms.google-services'" >> app/build.gradle
-          # تعديل build.gradle الرئيسي
+          cd BariqApp/android
           sed -i "s|dependencies {|dependencies {\n        classpath 'com.google.gms:google-services:4.4.0'|" build.gradle
+          echo "" >> app/build.gradle
+          echo "apply plugin: 'com.google.gms.google-services'" >> app/build.gradle
 
       - name: Build APK
         run: |
