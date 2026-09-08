@@ -28,7 +28,7 @@ jobs:
 
       - name: Create React Native project
         run: |
-          npx @react-native-community/cli@12 init BariqApp --version 0.73.0 --skip-install --npm
+          npx @react-native-community/cli@13 init BariqApp --version 0.74.0 --skip-install --npm
           cp App.js BariqApp/App.js
           cp index.js BariqApp/index.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
@@ -47,7 +47,7 @@ jobs:
         run: |
           cd BariqApp
           npm install
-          npm install @react-native-async-storage/async-storage@1.21.0
+          npm install @react-native-async-storage/async-storage@1.23.1
           npm install react-native-image-picker@7.1.0
           npm install @notifee/react-native@7.8.2
           npm install @react-native-firebase/app@20.0.0
