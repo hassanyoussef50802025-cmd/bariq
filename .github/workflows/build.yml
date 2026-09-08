@@ -33,6 +33,7 @@ jobs:
           cp index.js BariqApp/index.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
           cp Amiri-Regular.ttf BariqApp/Amiri-Regular.ttf 2>/dev/null || true
+          cp google-services.json BariqApp/android/app/google-services.json
           mkdir -p BariqApp/android/app/src/main/assets
           cp Amiri-Regular.ttf BariqApp/android/app/src/main/assets/Amiri-Regular.ttf 2>/dev/null || true
           convert logo.png -resize 72x72 BariqApp/android/app/src/main/res/mipmap-hdpi/ic_launcher.png 2>/dev/null || true
@@ -41,36 +42,6 @@ jobs:
           convert logo.png -resize 144x144 BariqApp/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 192x192 BariqApp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png 2>/dev/null || true
           sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />|' BariqApp/android/app/src/main/AndroidManifest.xml
-
-      - name: Create google-services.json
-        run: |
-          cat > BariqApp/android/app/google-services.json << 'EOF'
-          {
-            "project_info": {
-              "project_id": "bariq-ce6b4",
-              "project_number": "000000000000",
-              "firebase_url": "https://bariq-ce6b4-default-rtdb.firebaseio.com",
-              "storage_bucket": "bariq-ce6b4.appspot.com"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
-                  "android_client_info": {
-                    "package_name": "org.bariq"
-                  }
-                },
-                "api_key": [{"current_key": "AIzaSyDhEo61jzd-npwhhw-Vf1R8fLWttJbJib8"}],
-                "services": {
-                  "appinvite_service": {
-                    "other_platform_oauth_client": []
-                  }
-                }
-              }
-            ],
-            "configuration_version": "1"
-          }
-          EOF
 
       - name: Install dependencies
         run: |
