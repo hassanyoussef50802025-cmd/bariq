@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "144288003728",
+    "firebase_url": "https://bariq-ce6b4-default-rtdb.firebaseio.com",
+    "project_id": "bariq-ce6b4",
+    "storage_bucket": "bariq-ce6b4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:144288003728:android:8afef97e126c297e550a15",
+        "android_client_info": {
+          "package_name": "Org.bariq"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHDGMB65Ms_b89sq0-cqhkdZFtiWu1XIM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
