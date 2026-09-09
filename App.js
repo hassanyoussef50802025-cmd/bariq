@@ -8,7 +8,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from 'react-native-image-picker';
 import notifee, { AndroidImportance } from '@notifee/react-native';
-import BackgroundService from 'react-native-background-actions';
+import messaging from '@react-native-firebase/messaging';
 
 I18nManager.forceRTL(true);
 
@@ -70,7 +70,6 @@ const getMsgStatus = async (uid, key) => {
   } catch { return ''; }
 };
 
-// ==================== الإشعارات ====================
 let channelCreated = false;
 const setupNotifee = async () => {
   if(channelCreated) return;
@@ -93,61 +92,12 @@ const showNotification = async (title, body) => {
   } catch {}
 };
 
-// ==================== مهمة الخلفية ====================
-const backgroundTask = async (taskData) => {
-  const seenKeys = new Set();
-  try {
-    const savedSeen = await AsyncStorage.getItem('seen_keys_bg');
-    if(savedSeen) JSON.parse(savedSeen).forEach(k => seenKeys.add(k));
-  } catch {}
-
-  await new Promise(async (resolve) => {
-    const interval = setInterval(async () => {
-      if(!BackgroundService.isRunning()) { clearInterval(interval); resolve(); return; }
-      try {
-        const myId = await AsyncStorage.getItem('my_id');
-        if(!myId) return;
-        const names = JSON.parse(await AsyncStorage.getItem('contact_names')||'{}');
-        const incoming = await fbGet(myId);
-        const savedP = JSON.parse(await AsyncStorage.getItem('pending')||'{}');
-        let changed = false;
-
-        for(const [key, msg] of Object.entries(incoming)) {
-          if(!seenKeys.has(key) && msg && typeof msg === 'object') {
-            seenKeys.add(key);
-            const sid = msg.from||'';
-            if(!savedP[sid]) savedP[sid] = [];
-            savedP[sid].push({key, msg});
-            changed = true;
-            const name = names[sid]||`رقم ${sid}`;
-            const body = msg.type==='file' ? `📎 ${msg.filename||'ملف'}` : (msg.text||'');
-            await showNotification(`رسالة من ${name}`, body);
-          }
-        }
-
-        if(changed) {
-          await AsyncStorage.setItem('pending', JSON.stringify(savedP));
-          await AsyncStorage.setItem('seen_keys_bg', JSON.stringify([...seenKeys].slice(-500)));
-        }
-      } catch {}
-    }, 15000);
-  });
-};
-
-const startBackgroundService = async () => {
-  try {
-    if(BackgroundService.isRunning()) return;
-    await setupNotifee();
-    await BackgroundService.start(backgroundTask, {
-      taskName: 'بارق',
-      taskTitle: 'بارق يعمل في الخلفية',
-      taskDesc: 'جاري فحص الرسائل الجديدة...',
-      taskIcon: {name:'ic_launcher', type:'mipmap'},
-      color: '#1565C0',
-      parameters: {},
-    });
-  } catch {}
-};
+messaging().setBackgroundMessageHandler(async remoteMessage => {
+  await setupNotifee();
+  const title = remoteMessage.notification?.title || 'رسالة جديدة';
+  const body = remoteMessage.notification?.body || '';
+  await showNotification(title, body);
+});
 
 // ==================== شاشة الترحيب ====================
 const WelcomeScreen = ({onLogin}) => {
@@ -202,35 +152,60 @@ const HomeScreen = ({myId, onOpenChat}) => {
   const seenKeysRef = useRef(new Set());
 
   useEffect(() => {
+    setupNotifee();
     loadContacts();
-    startBackgroundService();
     startForegroundListener();
-    return () => { if(listenerRef.current) clearInterval(listenerRef.current); };
+    const unsub = messaging().onMessage(async remoteMessage => {
+      const title = remoteMessage.notification?.title || 'رسالة جديدة';
+      const body = remoteMessage.notification?.body || '';
+      await showNotification(title, body);
+    });
+    return () => {
+      if(listenerRef.current) clearInterval(listenerRef.current);
+      unsub();
+    };
   }, []);
 
   const loadContacts = async () => {
     const c = await AsyncStorage.getItem('contacts');
     const n = await AsyncStorage.getItem('contact_names');
     const p = await AsyncStorage.getItem('pending');
-    const seen = await AsyncStorage.getItem('seen_keys_bg');
     setContacts(c?JSON.parse(c):{});
     setContactNames(n?JSON.parse(n):{});
     setPending(p?JSON.parse(p):{});
-    if(seen) JSON.parse(seen).forEach(k=>seenKeysRef.current.add(k));
   };
 
   const startForegroundListener = () => {
     listenerRef.current = setInterval(async () => {
       try {
-        const p = await AsyncStorage.getItem('pending');
-        if(p) setPending(JSON.parse(p));
+        const myIdVal = await AsyncStorage.getItem('my_id');
+        if(!myIdVal) return;
+        const incoming = await fbGet(myIdVal);
+        let changed = false;
+        const savedP = await AsyncStorage.getItem('pending');
+        const allP = savedP?JSON.parse(savedP):{};
+        const savedNames = await AsyncStorage.getItem('contact_names');
+        const names = savedNames?JSON.parse(savedNames):{};
+        for(const [key,msg] of Object.entries(incoming)) {
+          if(!seenKeysRef.current.has(key)&&msg&&typeof msg==='object') {
+            seenKeysRef.current.add(key);
+            const sid = msg.from||'';
+            if(!allP[sid]) allP[sid]=[];
+            allP[sid].push({key,msg});
+            changed = true;
+          }
+        }
+        if(changed) {
+          await AsyncStorage.setItem('pending',JSON.stringify(allP));
+          setPending({...allP});
+        }
       } catch {}
-    }, 5000);
+    }, 15000);
   };
 
   const addContact = async () => {
     const cid = newContact.trim();
-    if(cid.length===8 && /^\d+$/.test(cid)) {
+    if(cid.length===8&&/^\d+$/.test(cid)) {
       if(cid===myId){Alert.alert('تنبيه','لا يمكنك إضافة رقمك الخاص');return;}
       const name = newName.trim()||cid;
       const updatedC = {...contacts,[cid]:cid};
