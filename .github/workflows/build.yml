@@ -31,6 +31,7 @@ jobs:
           npx @react-native-community/cli@13 init BariqApp --version 0.74.0 --skip-install --npm
           cp App.js BariqApp/App.js
           cp index.js BariqApp/index.js
+          cp BackgroundService.js BariqApp/BackgroundService.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
           cp Amiri-Regular.ttf BariqApp/Amiri-Regular.ttf 2>/dev/null || true
           cp google-services.json BariqApp/android/app/google-services.json
