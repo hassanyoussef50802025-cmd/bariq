@@ -8,9 +8,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:144288003728:android:8afef97e126c297e550a15",
+        "mobilesdk_app_id": "1:144288003728:android:eda32c14954f9a70550a15",
         "android_client_info": {
-          "package_name": "Org.bariq"
+          "package_name": "org.bariq"
         }
       },
       "oauth_client": [],
