@@ -33,7 +33,6 @@ jobs:
           cp index.js BariqApp/index.js
           cp logo.png BariqApp/logo.png 2>/dev/null || true
           cp Amiri-Regular.ttf BariqApp/Amiri-Regular.ttf 2>/dev/null || true
-          cp google-services.json BariqApp/android/app/google-services.json
           mkdir -p BariqApp/android/app/src/main/assets
           cp Amiri-Regular.ttf BariqApp/android/app/src/main/assets/Amiri-Regular.ttf 2>/dev/null || true
           convert logo.png -resize 72x72 BariqApp/android/app/src/main/res/mipmap-hdpi/ic_launcher.png 2>/dev/null || true
@@ -41,7 +40,7 @@ jobs:
           convert logo.png -resize 96x96 BariqApp/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 144x144 BariqApp/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png 2>/dev/null || true
           convert logo.png -resize 192x192 BariqApp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png 2>/dev/null || true
-          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />|' BariqApp/android/app/src/main/AndroidManifest.xml
+          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />|' BariqApp/android/app/src/main/AndroidManifest.xml
 
       - name: Install dependencies
         run: |
@@ -49,16 +48,7 @@ jobs:
           npm install
           npm install @react-native-async-storage/async-storage@1.23.1
           npm install react-native-image-picker@7.1.0
-          npm install @notifee/react-native@7.8.2
-          npm install @react-native-firebase/app@20.0.0
-          npm install @react-native-firebase/messaging@20.0.0
-
-      - name: Configure Firebase gradle
-        run: |
-          cd BariqApp/android
-          sed -i "s|dependencies {|dependencies {\n        classpath 'com.google.gms:google-services:4.4.0'|" build.gradle
-          echo "" >> app/build.gradle
-          echo "apply plugin: 'com.google.gms.google-services'" >> app/build.gradle
+          npm install react-native-onesignal@5.2.4
 
       - name: Build APK
         run: |
