@@ -3,17 +3,18 @@ import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, Alert, ScrollView, KeyboardAvoidingView,
   Platform, I18nManager, ActivityIndicator, SafeAreaView,
-  Image, Linking, AppState,
+  Image, Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from 'react-native-image-picker';
-import notifee, { AndroidImportance } from '@notifee/react-native';
-import messaging from '@react-native-firebase/messaging';
+import { OneSignal } from 'react-native-onesignal';
 
 I18nManager.forceRTL(true);
 
 const FIREBASE_URL = "https://bariq-ce6b4-default-rtdb.firebaseio.com";
 const FIREBASE_KEY = "AIzaSyDhEo61jzd-npwhhw-Vf1R8fLWttJbJib8";
+const ONESIGNAL_APP_ID = "4077f6a6-83bd-465d-a296-83c39d1834a4";
+const ONESIGNAL_API_KEY = "PLACEHOLDER_ONESIGNAL_KEY";
 const FONT_FAMILY = Platform.OS === 'android' ? 'Amiri-Regular' : 'System';
 
 const C = {
@@ -70,36 +71,41 @@ const getMsgStatus = async (uid, key) => {
   } catch { return ''; }
 };
 
-let channelCreated = false;
-const setupNotifee = async () => {
-  if(channelCreated) return;
+const savePlayerId = async (myId, playerId) => {
   try {
-    await notifee.requestPermission();
-    await notifee.createChannel({
-      id:'bariq', name:'رسائل بارق',
-      importance:AndroidImportance.HIGH, sound:'default', vibration:true,
-    });
-    channelCreated = true;
-  } catch {}
-};
-
-const showNotification = async (title, body) => {
-  try {
-    await notifee.displayNotification({
-      title, body,
-      android:{channelId:'bariq',importance:AndroidImportance.HIGH,smallIcon:'ic_launcher',pressAction:{id:'default'}},
+    await fetch(`${FIREBASE_URL}/players/${myId}.json?auth=${FIREBASE_KEY}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(playerId)
     });
   } catch {}
 };
 
-messaging().setBackgroundMessageHandler(async remoteMessage => {
-  await setupNotifee();
-  const title = remoteMessage.notification?.title || 'رسالة جديدة';
-  const body = remoteMessage.notification?.body || '';
-  await showNotification(title, body);
-});
+const getPlayerId = async (userId) => {
+  try {
+    const r = await fetch(`${FIREBASE_URL}/players/${userId}.json?auth=${FIREBASE_KEY}`);
+    const d = await r.json(); return (d && typeof d === 'string') ? d : null;
+  } catch { return null; }
+};
 
-// ==================== شاشة الترحيب ====================
+const sendPushNotification = async (recipientId, title, body) => {
+  try {
+    const playerId = await getPlayerId(recipientId);
+    if (!playerId) return;
+    await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': `Basic ${ONESIGNAL_API_KEY}`,
+      },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        include_player_ids: [playerId],
+        headings: { en: title, ar: title },
+        contents: { en: body, ar: body },
+      }),
+    });
+  } catch {}
+};
+
 const WelcomeScreen = ({onLogin}) => {
   const [inputId, setInputId] = useState('');
 
@@ -140,7 +146,6 @@ const WelcomeScreen = ({onLogin}) => {
   );
 };
 
-// ==================== شاشة الرئيسية ====================
 const HomeScreen = ({myId, onOpenChat}) => {
   const [contacts, setContacts] = useState({});
   const [contactNames, setContactNames] = useState({});
@@ -152,19 +157,20 @@ const HomeScreen = ({myId, onOpenChat}) => {
   const seenKeysRef = useRef(new Set());
 
   useEffect(() => {
-    setupNotifee();
+    setupOneSignal();
     loadContacts();
     startForegroundListener();
-    const unsub = messaging().onMessage(async remoteMessage => {
-      const title = remoteMessage.notification?.title || 'رسالة جديدة';
-      const body = remoteMessage.notification?.body || '';
-      await showNotification(title, body);
-    });
-    return () => {
-      if(listenerRef.current) clearInterval(listenerRef.current);
-      unsub();
-    };
+    return () => { if(listenerRef.current) clearInterval(listenerRef.current); };
   }, []);
+
+  const setupOneSignal = async () => {
+    try {
+      OneSignal.initialize(ONESIGNAL_APP_ID);
+      OneSignal.Notifications.requestPermission(true);
+      const id = await OneSignal.User.pushSubscription.getIdAsync();
+      if (id) await savePlayerId(myId, id);
+    } catch {}
+  };
 
   const loadContacts = async () => {
     const c = await AsyncStorage.getItem('contacts');
@@ -178,14 +184,10 @@ const HomeScreen = ({myId, onOpenChat}) => {
   const startForegroundListener = () => {
     listenerRef.current = setInterval(async () => {
       try {
-        const myIdVal = await AsyncStorage.getItem('my_id');
-        if(!myIdVal) return;
-        const incoming = await fbGet(myIdVal);
+        const incoming = await fbGet(myId);
         let changed = false;
         const savedP = await AsyncStorage.getItem('pending');
         const allP = savedP?JSON.parse(savedP):{};
-        const savedNames = await AsyncStorage.getItem('contact_names');
-        const names = savedNames?JSON.parse(savedNames):{};
         for(const [key,msg] of Object.entries(incoming)) {
           if(!seenKeysRef.current.has(key)&&msg&&typeof msg==='object') {
             seenKeysRef.current.add(key);
@@ -295,7 +297,6 @@ const HomeScreen = ({myId, onOpenChat}) => {
   );
 };
 
-// ==================== شاشة المحادثة ====================
 const ChatScreen = ({myId,contactId,contactName,pendingMsgs,onBack}) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -397,6 +398,7 @@ const ChatScreen = ({myId,contactId,contactName,pendingMsgs,onBack}) => {
       const idx=newMsgs.length-1;
       if(newMsgs[idx]){newMsgs[idx]={...newMsgs[idx],key};msgsRef.current=newMsgs;setMessages([...newMsgs]);await saveMessages(newMsgs);}
     }
+    sendPushNotification(contactId, `رسالة من ${myId}`, trimmed);
     setSending(false);
   };
 
@@ -415,6 +417,7 @@ const ChatScreen = ({myId,contactId,contactName,pendingMsgs,onBack}) => {
         await saveMessages(updated);
         const key=await fbSend(contactId,payload);
         if(key){const newMsgs=[...msgsRef.current];const idx=newMsgs.length-1;if(newMsgs[idx]){newMsgs[idx]={...newMsgs[idx],key};msgsRef.current=newMsgs;setMessages([...newMsgs]);await saveMessages(newMsgs);}}
+        sendPushNotification(contactId, `رسالة من ${myId}`, '📎 ملف مرفق');
       }
     } catch {Alert.alert('خطأ','تعذر اختيار الملف');}
   };
