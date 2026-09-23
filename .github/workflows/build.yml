@@ -39,6 +39,10 @@ jobs:
           convert logo.png -resize 192x192 BariqApp/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png 2>/dev/null || true
           sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />|' BariqApp/android/app/src/main/AndroidManifest.xml
 
+      - name: Insert OneSignal key
+        run: |
+          sed -i "s|PLACEHOLDER_ONESIGNAL_KEY|${{ secrets.ONESIGNAL_KEY }}|" BariqApp/App.js
+
       - name: Install dependencies
         run: |
           cd BariqApp
