@@ -86,19 +86,20 @@ const getPlayerId = async (userId) => {
   } catch { return null; }
 };
 
+// استخدام رابط api.onesignal.com الجديد مع Authorization: Key (الصحيح لمفاتيح os_v2_app)
 const sendPushNotification = async (recipientId, title, body) => {
   try {
     const playerId = await getPlayerId(recipientId);
     if (!playerId) return;
-    await fetch('https://onesignal.com/api/v1/notifications', {
+    await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': `Basic ${ONESIGNAL_API_KEY}`,
+        'Authorization': `Key ${ONESIGNAL_API_KEY}`,
       },
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
-        include_player_ids: [playerId],
+        include_subscription_ids: [playerId],
         headings: { en: title, ar: title },
         contents: { en: body, ar: body },
       }),
@@ -163,12 +164,25 @@ const HomeScreen = ({myId, onOpenChat}) => {
     return () => { if(listenerRef.current) clearInterval(listenerRef.current); };
   }, []);
 
+  // ننتظر معرّف الجهاز (قد يستغرق إعداده بضع ثوانٍ) بدلاً من طلبه فوراً
   const setupOneSignal = async () => {
     try {
       OneSignal.initialize(ONESIGNAL_APP_ID);
       OneSignal.Notifications.requestPermission(true);
-      const id = await OneSignal.User.pushSubscription.getIdAsync();
-      if (id) await savePlayerId(myId, id);
+
+      const trySave = async (retries) => {
+        const id = await OneSignal.User.pushSubscription.getIdAsync();
+        if (id) {
+          await savePlayerId(myId, id);
+        } else if (retries > 0) {
+          setTimeout(() => trySave(retries - 1), 3000);
+        }
+      };
+      trySave(10);
+
+      OneSignal.User.pushSubscription.addEventListener('change', async (event) => {
+        if (event?.current?.id) await savePlayerId(myId, event.current.id);
+      });
     } catch {}
   };
 
